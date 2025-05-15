@@ -8,28 +8,45 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 function buildPrompt(userQuery: string, mindMapContext: any) {
   return `
 You are an AI knowledge map builder. The user will ask a question and provide the current mind map (nodes, edges, groups).
-Your job is to return a new/updated set of concepts and relationships, in JSON.
+Your job is to return an updated set of concepts and relationships in JSON, expanding the selected topic with **two new layers** of children.
 
-Return a JSON of this shape:
+**Your Task:**
+- Find the node that best matches the user's query or is selected for expansion.
+- For that node:
+  - Generate 4-8 direct children (Layer 1), each a meaningful subtopic or key aspect.
+  - For each child, generate 2-4 children of their own (Layer 2), as sub-aspects, examples, or further breakdowns.
+- If any of these should be "preview" nodes (for future expansion), set \`"preview": true\`.
+- Make sure all nodes have unique "id", "label", and belong to a logical "group" if appropriate.
+
+**Node and Edge Structure:**
+Return a JSON like:
 {
   nodes: [ { id, label, group, type, preview, collapsed, ... } ],
   edges: [ { id, source, target, type } ]
 }
+Where:
+- "group" clusters related concepts visually.
+- "type" in edges is one of: "informs", "depends on", "related".
+- "preview" nodes are semi-transparent, for user expansion.
+- Avoid duplicating nodes already present in the mind map.
+- Place new nodes in clear, logical relationships, minimizing clutter.
 
-Rules:
-- "preview" nodes should be suggested expansion points, semi-transparent, and can be expanded by the user.
-- Use "group" to cluster concepts.
-- Use "type" in edges: "informs", "depends on", "related".
-- Try to minimize duplication and maximize visual clarity.
+**Rules:**
+- Expand only the node relevant to the user query by two layers.
+- Do **not** connect nodes in Layer 2 directly to the root node unless logically necessary.
+- Don’t return explanations, only valid, parseable JSON as shown.
+- Use unique, stable IDs (don’t re-use IDs of existing nodes unless updating).
+- Try to maximize visual clarity.
 
-Current mind map (context):
+**Current mind map (context):**
 ${JSON.stringify(mindMapContext)}
 
-User query: "${userQuery}"
+**User query:** "${userQuery}"
 
-Return only valid JSON, no explanation.
-`;
+Return only the updated mind map JSON.
+  `;
 }
+
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { userQuery, mindMapContext } = req.body;
