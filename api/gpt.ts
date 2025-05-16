@@ -10,21 +10,30 @@ function buildPrompt(userQuery: string, mindMapContext: any) {
 You are an AI knowledge map builder. The user will ask a question and provide the current mind map (nodes, edges, groups).
 Your job is to return an updated set of concepts and relationships in JSON, expanding the selected topic with **two new layers** of children.
 
+Output must be valid, parseable JSON that matches the shape below:
+
+Example Output:
+{
+  "nodes": [
+    { "id": "root", "label": "Main Topic", "group": "Group A", "type": "concept", "preview": false, "collapsed": false },
+    { "id": "child1", "label": "Subtopic 1", "group": "Group A", "type": "concept", "preview": false, "collapsed": false },
+    { "id": "child2", "label": "Subtopic 2", "group": "Group A", "type": "concept", "preview": true, "collapsed": false }
+  ],
+  "edges": [
+    { "id": "e-root-child1", "source": "root", "target": "child1", "type": "informs" },
+    { "id": "e-root-child2", "source": "root", "target": "child2", "type": "depends on" }
+  ]
+}
+
 **Your Task:**
 - Find the node that best matches the user's query or is selected for expansion.
 - For that node:
   - Generate 4-8 direct children (Layer 1), each a meaningful subtopic or key aspect.
   - For each child, generate 2-4 children of their own (Layer 2), as sub-aspects, examples, or further breakdowns.
-- If any of these should be "preview" nodes (for future expansion), set \`"preview": true\`.
+- If any of these should be "preview" nodes (for future expansion), set "preview": true.
 - Make sure all nodes have unique "id", "label", and belong to a logical "group" if appropriate.
 
 **Node and Edge Structure:**
-Return a JSON like:
-{
-  nodes: [ { id, label, group, type, preview, collapsed, ... } ],
-  edges: [ { id, source, target, type } ]
-}
-Where:
 - "group" clusters related concepts visually.
 - "type" in edges is one of: "informs", "depends on", "related".
 - "preview" nodes are semi-transparent, for user expansion.
@@ -34,7 +43,8 @@ Where:
 **Rules:**
 - Expand only the node relevant to the user query by two layers.
 - Do **not** connect nodes in Layer 2 directly to the root node unless logically necessary.
-- Don’t return explanations, only valid, parseable JSON as shown.
+- Do not include comments or extra text—only valid JSON.
+- Double-check for missing commas, mismatched quotes, or unclosed braces before returning.
 - Use unique, stable IDs (don’t re-use IDs of existing nodes unless updating).
 - Try to maximize visual clarity.
 
@@ -46,6 +56,7 @@ ${JSON.stringify(mindMapContext)}
 Return only the updated mind map JSON.
   `;
 }
+
 
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
