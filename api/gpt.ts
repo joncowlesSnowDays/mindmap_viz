@@ -59,7 +59,7 @@ Return only the updated mind map JSON.
 
 
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req, res) {
   const { userQuery, mindMapContext } = req.body;
   const prompt = buildPrompt(userQuery, mindMapContext);
 
@@ -67,6 +67,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   console.log("API key:", process.env.OPENAI_API_KEY ? "present" : "missing");
   console.log("userQuery:", userQuery);
   console.log("mindMapContext:", mindMapContext);
+  console.log("Prompt sent to OpenAI:", prompt);
   // --- Debug logs end ---
 
   try {
@@ -81,18 +82,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       temperature: 0.3
     });
 
-    // Parse the model's JSON response
+    // --- Log the raw GPT content ---
     const content = completion.choices[0]?.message?.content;
+    console.log("Raw GPT response:", content);
+
     let json = null;
     try {
       json = typeof content === "string" ? JSON.parse(content) : content;
     } catch (e) {
-      console.log("JSON parse error:", e); // <--- Add a debug log for parse errors
-      return res.status(200).json({ nodes: [], edges: [], error: "LLM output parse error" });
+      // Enhanced error logging with the problematic content and error details
+      console.error("JSON parse error:", e);
+      console.error("Problematic GPT response:", content);
+      return res.status(200).json({ nodes: [], edges: [], error: "LLM output parse error", details: e.message, gpt_response: content });
     }
     res.status(200).json(json);
-  } catch (err: any) {
-    console.error("OpenAI API error:", err); // <--- Add error debug log
+  } catch (err) {
+    console.error("OpenAI API error:", err);
     res.status(500).json({ error: "OpenAI API error", details: err?.message });
   }
 }
+
