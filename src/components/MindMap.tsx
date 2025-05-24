@@ -25,7 +25,8 @@ interface MindMapProps {
 const fitViewOptions = { padding: 0.18, includeHiddenNodes: true };
 const startX = 400;     // Center X of map
 const startY = 40;      // Top Y of map
-const xGap = 100;       // Horizontal spacing between siblings
+const baseGap = 70;     // Minimum horizontal spacing between siblings
+const charWidth = 8.5;  // Estimated width per label character (in px)
 const yGap = 100;       // Vertical spacing between layers
 
 // --- Helper Functions ---
@@ -38,36 +39,53 @@ function getChildMap(edges: Edge[]) {
   return childMap;
 }
 
-// --- Top-Down Tree Layout ---
+// --- Dynamically Adjusted Tree Layout ---
 function assignTreePositions(
   nodes: Node[],
   edges: Edge[],
   rootId: string,
   startX: number = 400,
   startY: number = 40,
-  xGap: number = 100,
+  baseGap: number = 70,
+  charWidth: number = 8.5,
   yGap: number = 100
 ) {
   const childMap = getChildMap(edges);
   const idToNode: Record<string, Node> = Object.fromEntries(nodes.map(n => [n.id, n]));
   let nextX = startX;
 
+  // Helper: Compute required X gap for a group of siblings based on label lengths
+  function calcSiblingGap(siblingIds: string[]): number {
+    if (siblingIds.length < 2) return baseGap;
+    // Find longest label among these siblings
+    const maxLabelLen = Math.max(
+      ...siblingIds.map(id => (idToNode[id]?.data?.label?.length || 8))
+    );
+    // Add more spacing for longer labels, with some padding
+    return Math.max(baseGap, maxLabelLen * charWidth + 35);
+  }
+
   function placeSubtree(id: string, depth: number) {
     const children = childMap[id] || [];
     let myX = nextX;
     let myY = startY + depth * yGap;
+
     if (children.length === 0) {
       // Leaf: assign and increment
       idToNode[id].position = { x: myX, y: myY };
-      nextX += xGap;
+      nextX += baseGap;
     } else {
       // Non-leaf: recursively place children, center parent above
+      const siblingGap = calcSiblingGap(children);
       const start = nextX;
-      children.forEach(childId => placeSubtree(childId, depth + 1));
-      const end = nextX - xGap;
+      children.forEach(childId => {
+        placeSubtree(childId, depth + 1);
+        nextX += siblingGap - baseGap; // adjust spacing between children
+      });
+      const end = nextX - siblingGap; // last increment goes one too far
       idToNode[id].position = {
         x: (start + end) / 2,
-        y: myY
+        y: myY,
       };
     }
   }
@@ -100,7 +118,7 @@ const MindMap: React.FC<MindMapProps> = ({
         const { nodes: baseNodes, edges: baseEdges } = transformGPTToFlow(gptData);
         const mainNodeId = baseNodes[0]?.id || "main";
         let positionedNodes = assignTreePositions(
-          baseNodes, baseEdges, mainNodeId, startX, startY, xGap, yGap
+          baseNodes, baseEdges, mainNodeId, startX, startY, baseGap, charWidth, yGap
         );
         setNodes(positionedNodes);
         setEdges(baseEdges);
@@ -126,7 +144,7 @@ const MindMap: React.FC<MindMapProps> = ({
         const merged = mergeExpandedNodesAndEdges(nodes, edges, newNodes, newEdges, node.id);
         const mainNodeId = nodes[0]?.id || "main";
         let positionedNodes = assignTreePositions(
-          merged.nodes, merged.edges, mainNodeId, startX, startY, xGap, yGap
+          merged.nodes, merged.edges, mainNodeId, startX, startY, baseGap, charWidth, yGap
         );
         setNodes(positionedNodes);
         setEdges(merged.edges);
@@ -166,7 +184,7 @@ const MindMap: React.FC<MindMapProps> = ({
           const merged = mergeExpandedNodesAndEdges(localNodes, localEdges, newNodes, newEdges, picked.id);
           const mainNodeId = merged.nodes[0]?.id || "main";
           let positionedNodes = assignTreePositions(
-            merged.nodes, merged.edges, mainNodeId, startX, startY, xGap, yGap
+            merged.nodes, merged.edges, mainNodeId, startX, startY, baseGap, charWidth, yGap
           );
           localNodes = positionedNodes;
           localEdges = merged.edges;
