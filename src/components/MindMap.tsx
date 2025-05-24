@@ -9,6 +9,8 @@ import ReactFlow, {
   Node,
   Edge,
   Connection,
+  OnNodesChange,
+  NodeChange,
 } from "reactflow";
 import "reactflow/dist/style.css";
 import { useGPT } from "../hooks/useGPT.ts";
@@ -48,6 +50,20 @@ function getChildMap(edges: Edge[]) {
     childMap[e.source].push(e.target);
   });
   return childMap;
+}
+
+// --- Get all descendants (recursive) for parent/child drag logic ---
+function getDescendantIds(parentId: string, childMap: Record<string, string[]>): string[] {
+  const result: string[] = [];
+  function traverse(id: string) {
+    const children = childMap[id] || [];
+    for (const child of children) {
+      result.push(child);
+      traverse(child);
+    }
+  }
+  traverse(parentId);
+  return result;
 }
 
 // --- Staggered Tree Layout ---
@@ -167,12 +183,72 @@ function resolveNodeOverlapsBoundingBox(
 const MindMap: React.FC<MindMapProps> = ({
   userQuery, triggerUpdate, automateCount = 3, automateSignal = 0,
 }) => {
-  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  const [nodes, setNodes, rawOnNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const { queryGPT, loading } = useGPT();
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
   const expandedCache = useRef<Record<string, boolean>>({});
   const mindMapContextRef = useRef<{ nodes: Node[]; edges: Edge[] }>({ nodes: [], edges: [] });
+
+  // --- Custom onNodesChange for parent/child drag ---
+  const onNodesChange = useCallback<OnNodesChange>(
+    (changes: NodeChange[]) => {
+      let updated = [...nodes];
+      const childMap = getChildMap(edges);
+
+      changes.forEach(change => {
+        if (change.type === "position" && change.dragging && change.position) {
+          // Find all descendants to move
+          const descendantIds = getDescendantIds(change.id, childMap);
+
+          // Find delta for moved node (safe for undefined)
+          const node = updated.find(n => n.id === change.id);
+          const prevX = node?.position?.x ?? 0;
+          const prevY = node?.position?.y ?? 0;
+          const newX = change.position.x ?? prevX;
+          const newY = change.position.y ?? prevY;
+          const dx = newX - prevX;
+          const dy = newY - prevY;
+
+          updated = updated.map(n => {
+            // Move dragged node
+            if (n.id === change.id) {
+              if (
+                change.position &&
+                typeof change.position.x === "number" &&
+                typeof change.position.y === "number"
+              ) {
+                return {
+                  ...n,
+                  position: {
+                    x: change.position.x,
+                    y: change.position.y,
+                  },
+                };
+              } else {
+                return n;
+              }
+            }
+            // Move all descendants by the same delta
+            if (descendantIds.includes(n.id)) {
+              const cx = n.position?.x ?? 0;
+              const cy = n.position?.y ?? 0;
+              return {
+                ...n,
+                position: {
+                  x: cx + dx,
+                  y: cy + dy,
+                },
+              };
+            }
+            return n;
+          });
+        }
+      });
+      setNodes(updated);
+    },
+    [nodes, edges, setNodes]
+  );
 
   // --- Initial Mind Map
   useEffect(() => {
