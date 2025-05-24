@@ -28,8 +28,8 @@ Example Output:
 **Your Task:**
 - Find the node that best matches the user's query or is selected for expansion.
 - For that node:
-  - Generate 4-6 direct children (Layer 1), each a meaningful subtopic or key aspect.
-  - For each child, generate 2-3 children of their own (Layer 2), as sub-aspects, examples, or further breakdowns.
++   - Generate 4-6 direct children (Layer 1), each a meaningful subtopic or key aspect.
++   - (If you want to expand further, you can expand one of these Layer 1 nodes in a separate call.)
 - If any of these should be "preview" nodes (for future expansion), set "preview": true.
 - Make sure all nodes have unique "id", "label", and belong to a logical "group" if appropriate.
 
