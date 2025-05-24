@@ -135,10 +135,17 @@ const MindMap: React.FC<MindMapProps> = ({ userQuery, triggerUpdate }) => {
     [nodes, edges, queryGPT, reactFlowInstance]
   );
 
-  // On user query or trigger, update mind map using GPT
+  // Update mind map on explicit trigger, or reset to blank when userQuery is blank
   useEffect(() => {
+    // If userQuery is empty or only whitespace, CLEAR the map
+    if (!userQuery || !userQuery.trim()) {
+      setNodes([]);
+      setEdges([]);
+      return;
+    }
+
+    // Otherwise, run normal initial topic logic
     const updateMindMap = async () => {
-      if (!userQuery) return;
       mindMapContextRef.current = { nodes, edges };
       const isFirstTime = !nodes.length && !edges.length;
       const gptData = await queryGPT(
