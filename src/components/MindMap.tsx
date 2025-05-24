@@ -9,12 +9,12 @@ import ReactFlow, {
   Node,
   Edge,
   Connection,
-  MarkerType,
+  MarkerType
 } from "reactflow";
 import "reactflow/dist/style.css";
-import { useGPT } from "../hooks/useGPT.ts";
-import { transformGPTToFlow } from "../utils/mindMapTransform.ts";
-import Legend from "./Legend.tsx";
+import { useGPT } from "../hooks/useGPT";
+import { transformGPTToFlow, mergeExpandedNodesAndEdges } from "../utils/mindMapTransform";
+import Legend from "./Legend";
 
 interface MindMapProps {
   userQuery: string;
@@ -22,15 +22,14 @@ interface MindMapProps {
 }
 
 const fitViewOptions = {
-  padding: 0.2,
+  padding: 0.18, // Small padding for better centering
   includeHiddenNodes: true,
 };
 
 const centerX = 400;
 const centerY = 300;
-const layerRadius = 180;
+const layerRadius = 120; // Tweak as needed
 
-// --- MULTI-LAYER RADIAL LAYOUT HELPERS ---
 function getChildMap(edges: Edge[]) {
   const childMap: Record<string, string[]> = {};
   edges.forEach((e) => {
@@ -40,12 +39,13 @@ function getChildMap(edges: Edge[]) {
   return childMap;
 }
 
+// Recursively assign positions in concentric circles for all descendants (with jitter).
 function assignRadialPositions(
   nodes: Node[],
   edges: Edge[],
   rootId: string,
   center: { x: number; y: number },
-  layerRadius: number = 80, // smaller spacing!
+  layerRadius: number = 120,
   angleStart: number = 0,
   angleEnd: number = 2 * Math.PI,
   layer: number = 1,
@@ -67,7 +67,7 @@ function assignRadialPositions(
     const angleSpan = aEnd - aStart;
     children.forEach((childId, idx) => {
       const angle = aStart + (angleSpan * (idx + 1)) / (children.length + 1);
-      const jitter = (Math.random() - 0.5) * 16; // +/-8px
+      const jitter = (Math.random() - 0.5) * 16; // small jitter
       idToNode[childId].position = {
         x: center.x + (radius * layer + jitter) * Math.cos(angle),
         y: center.y + (radius * layer + jitter) * Math.sin(angle),
@@ -91,109 +91,41 @@ function assignRadialPositions(
   return Object.values(idToNode);
 }
 
-
-// --------------------
-
+// --- Main MindMap Component ---
 const MindMap: React.FC<MindMapProps> = ({ userQuery, triggerUpdate }) => {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const { queryGPT, loading } = useGPT();
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
 
-  // Reference to current mind map state for context
+  // --- Store last expanded node id to avoid duplicate expansion ---
+  const expandedCache = useRef<Record<string, boolean>>({});
+
+  // Store full node/edge tree for expansion
   const mindMapContextRef = useRef<{ nodes: Node[]; edges: Edge[] }>({ nodes: [], edges: [] });
 
-  // --- Click-to-expand for any node ---
-  const onNodeClick = useCallback(
-    async (event, node) => {
-      mindMapContextRef.current = { nodes, edges };
-      // Pass selectedNodeId as clicked node's id
-      const gptData = await queryGPT(
-        node.data.label || node.id,
-        mindMapContextRef.current,
-        node.id // <- selectedNodeId
-      );
-
-      console.log("GPT DATA (click):", gptData);
-
-      if (gptData && gptData.nodes && gptData.edges) {
-        // Merge logic: Only add new nodes/edges
-        const { nodes: newNodes, edges: newEdges } = transformGPTToFlow(gptData, nodes, edges);
-
-        // Merge nodes by unique id
-        const existingNodeIds = new Set(nodes.map(n => n.id));
-        const mergedNodes = [
-          ...nodes,
-          ...newNodes.filter(n => !existingNodeIds.has(n.id)),
-        ];
-
-        // Merge edges by unique id
-        const existingEdgeIds = new Set(edges.map(e => e.id));
-        const mergedEdges = [
-          ...edges,
-          ...newEdges.filter(e => !existingEdgeIds.has(e.id)),
-        ];
-
-        // Optional: re-run layout, or just update positions for new nodes if you want
-        // Here, relayout everything:
-        const mainNodeId = mergedNodes[0]?.id || "main";
-        const relayoutNodes = assignRadialPositions(
-          mergedNodes,
-          mergedEdges,
-          mainNodeId,
-          { x: centerX, y: centerY }
-        );
-
-        setNodes(relayoutNodes);
-        setEdges(mergedEdges);
-
-        // FIT VIEW after update
-        if (reactFlowInstance) {
-          setTimeout(() => {
-            try {
-              reactFlowInstance.fitView(fitViewOptions);
-            } catch (err) {
-              console.warn("fitView error (click):", err);
-            }
-          }, 100);
-        }
-      }
-    },
-    [nodes, edges, queryGPT, reactFlowInstance]
-  );
-
-  // --- On user query or trigger, update mind map using GPT ---
+  // --- Initial Mind Map: NEW Query ---
   useEffect(() => {
     const updateMindMap = async () => {
       if (!userQuery) return;
-      mindMapContextRef.current = { nodes, edges };
-      const isFirstTime = !nodes.length && !edges.length;
-      // For first map: selectedNodeId=null. Otherwise undefined.
-      const gptData = await queryGPT(
-        userQuery,
-        mindMapContextRef.current,
-        isFirstTime ? null : undefined
-      );
-
-      console.log("GPT DATA (query):", gptData);
-
+      expandedCache.current = {}; // Reset expansion cache
+      mindMapContextRef.current = { nodes: [], edges: [] }; // Reset previous
+      const gptData = await queryGPT(userQuery, mindMapContextRef.current, null);
       if (gptData && gptData.nodes && gptData.edges) {
-        let { nodes: newNodes, edges: newEdges } = transformGPTToFlow(gptData, nodes, edges);
-        const mainNodeId = newNodes[0]?.id || "main";
-        newNodes = assignRadialPositions(newNodes, newEdges, mainNodeId, { x: centerX, y: centerY });
-
-        setNodes(newNodes);
-        setEdges(newEdges);
-
-        // FIT VIEW after update
+        const { nodes: baseNodes, edges: baseEdges } = transformGPTToFlow(gptData);
+        const mainNodeId = baseNodes[0]?.id || "main";
+        const positioned = assignRadialPositions(
+          baseNodes,
+          baseEdges,
+          mainNodeId,
+          { x: centerX, y: centerY },
+          layerRadius
+        );
+        setNodes(positioned);
+        setEdges(baseEdges);
+        mindMapContextRef.current = { nodes: positioned, edges: baseEdges };
         if (reactFlowInstance) {
-          setTimeout(() => {
-            try {
-              reactFlowInstance.fitView(fitViewOptions);
-            } catch (err) {
-              console.warn("fitView error (query):", err);
-            }
-          }, 100);
+          setTimeout(() => reactFlowInstance.fitView(fitViewOptions), 100);
         }
       }
     };
@@ -201,7 +133,34 @@ const MindMap: React.FC<MindMapProps> = ({ userQuery, triggerUpdate }) => {
     // eslint-disable-next-line
   }, [triggerUpdate, userQuery, reactFlowInstance]);
 
-  // Allow user to manually connect nodes (drag edge)
+  // --- Node Expansion ---
+  const onNodeClick = useCallback(
+    async (_event, node) => {
+      // Prevent duplicate expansion on same node
+      if (expandedCache.current[node.id]) return;
+      expandedCache.current[node.id] = true;
+
+      mindMapContextRef.current = { nodes, edges };
+      const gptData = await queryGPT(node.data.label || node.id, mindMapContextRef.current, node.id);
+      if (gptData && gptData.nodes && gptData.edges) {
+        const { nodes: newNodes, edges: newEdges } = transformGPTToFlow(gptData);
+        // Merge with current map, replacing only children of expanded node
+        const merged = mergeExpandedNodesAndEdges(nodes, edges, newNodes, newEdges, node.id);
+        const mainNodeId = nodes[0]?.id || "main";
+        const positioned = assignRadialPositions(
+          merged.nodes, merged.edges, mainNodeId, { x: centerX, y: centerY }, layerRadius
+        );
+        setNodes(positioned);
+        setEdges(merged.edges);
+        mindMapContextRef.current = { nodes: positioned, edges: merged.edges };
+        if (reactFlowInstance) {
+          setTimeout(() => reactFlowInstance.fitView(fitViewOptions), 100);
+        }
+      }
+    },
+    [nodes, edges, queryGPT, reactFlowInstance]
+  );
+
   const onConnect = useCallback(
     (params: Edge | Connection) => setEdges((eds) => addEdge(params, eds)),
     [setEdges]

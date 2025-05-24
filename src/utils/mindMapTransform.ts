@@ -1,34 +1,43 @@
-import { Node, Edge } from "reactflow";
+import { Node, Edge, MarkerType } from "reactflow";
 
-// Merge logic: Merge only new nodes/edges, keep all old ones
-export function mergeNodesEdges(
+/**
+ * Merge newly expanded nodes/edges with the previous tree, replacing only the children of expandedNodeId.
+ */
+export function mergeExpandedNodesAndEdges(
   prevNodes: Node[],
   prevEdges: Edge[],
   newNodes: Node[],
-  newEdges: Edge[]
-): { nodes: Node[], edges: Edge[] } {
-  // Merge nodes by ID, don't overwrite old ones (keep old style/preview state)
-  const nodeMap = Object.fromEntries(prevNodes.map(n => [n.id, n]));
-  for (const n of newNodes) {
-    if (!nodeMap[n.id]) nodeMap[n.id] = n;
-  }
-  // Merge edges by ID, skip duplicates
-  const edgeMap = Object.fromEntries(prevEdges.map(e => [e.id, e]));
-  for (const e of newEdges) {
-    if (!edgeMap[e.id]) edgeMap[e.id] = e;
-  }
-  return { nodes: Object.values(nodeMap), edges: Object.values(edgeMap) };
+  newEdges: Edge[],
+  expandedNodeId: string
+): { nodes: Node[]; edges: Edge[] } {
+  // Remove existing children of the expanded node (and their downstream edges)
+  const oldChildrenIds = prevEdges
+    .filter(e => e.source === expandedNodeId)
+    .map(e => e.target);
+
+  // Remove those children from the previous nodes and their edges
+  const filteredNodes = prevNodes.filter(
+    n => !oldChildrenIds.includes(n.id)
+  );
+  const filteredEdges = prevEdges.filter(
+    e => !(e.source === expandedNodeId && oldChildrenIds.includes(e.target))
+  );
+
+  // Add in new children and their edges
+  return {
+    nodes: [...filteredNodes, ...newNodes],
+    edges: [...filteredEdges, ...newEdges]
+  };
 }
 
-export function transformGPTToFlow(
-  gptData: any,
-  prevNodes: Node[],
-  prevEdges: Edge[]
-): { nodes: Node[]; edges: Edge[] } {
+/*
+ * Transforms GPT data to React Flow nodes and edges, with preview node style and arrow markers.
+ */
+export function transformGPTToFlow(gptData: any): { nodes: Node[]; edges: Edge[] } {
   if (!gptData || !gptData.nodes) return { nodes: [], edges: [] };
 
-  // Map new GPT nodes
-  const newNodes: Node[] = gptData.nodes.map((n: any) => ({
+  // Map node data to React Flow node format
+  const nodes: Node[] = gptData.nodes.map((n: any) => ({
     id: n.id,
     type: n.preview ? "input" : "default",
     data: {
@@ -47,8 +56,8 @@ export function transformGPTToFlow(
     },
   }));
 
-  // Map new GPT edges
-  const newEdges: Edge[] = gptData.edges.map((e: any) => ({
+  // Map edges, style with color, and add arrows
+  const edges: Edge[] = gptData.edges.map((e: any) => ({
     id: e.id,
     source: e.source,
     target: e.target,
@@ -59,11 +68,11 @@ export function transformGPTToFlow(
         : e.type === "related" ? "#f59e42"
         : "#444",
       strokeWidth: 2,
-      strokeDasharray: e.preview ? "4 2" : undefined,
     },
+    markerEnd: { type: MarkerType.ArrowClosed }, // <-- show arrows!
     animated: !!e.preview,
+    type: "default"
   }));
 
-  // Merge new with old
-  return mergeNodesEdges(prevNodes, prevEdges, newNodes, newEdges);
+  return { nodes, edges };
 }
