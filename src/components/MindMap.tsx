@@ -191,17 +191,26 @@ const MindMap: React.FC<MindMapProps> = ({
   const mindMapContextRef = useRef<{ nodes: Node[]; edges: Edge[] }>({ nodes: [], edges: [] });
 
   // --- Custom onNodesChange for parent/child drag ---
-  const onNodesChange = useCallback<OnNodesChange>(
-    (changes: NodeChange[]) => {
-      let updated = [...nodes];
-      const childMap = getChildMap(edges);
+const onNodesChange = useCallback<OnNodesChange>(
+  (changes: NodeChange[]) => {
+    let updated = [...nodes];
+    const childMap = getChildMap(edges);
 
-      changes.forEach(change => {
-        if (change.type === "position" && change.dragging && change.position) {
-          // Find all descendants to move
+    changes.forEach(change => {
+      if (change.type === "position" && change.dragging && change.position) {
+        // Is this the root node?
+        if (change.id === (nodes[0]?.id || "main")) {
+          // Re-layout with new root position!
+          const newX = change.position.x ?? startX;
+          const newY = change.position.y ?? startY;
+          let repositioned = assignStaggeredTreePositions(
+            nodes, edges, change.id, newX, newY, xGap, yGap, staggerY
+          );
+          repositioned = resolveNodeOverlapsBoundingBox(repositioned, 10, 32);
+          setNodes(repositioned);
+        } else {
+          // Child/descendant logic as before (move subtree)
           const descendantIds = getDescendantIds(change.id, childMap);
-
-          // Find delta for moved node (safe for undefined)
           const node = updated.find(n => n.id === change.id);
           const prevX = node?.position?.x ?? 0;
           const prevY = node?.position?.y ?? 0;
@@ -211,7 +220,6 @@ const MindMap: React.FC<MindMapProps> = ({
           const dy = newY - prevY;
 
           updated = updated.map(n => {
-            // Move dragged node
             if (n.id === change.id) {
               if (
                 change.position &&
@@ -229,7 +237,6 @@ const MindMap: React.FC<MindMapProps> = ({
                 return n;
               }
             }
-            // Move all descendants by the same delta
             if (descendantIds.includes(n.id)) {
               const cx = n.position?.x ?? 0;
               const cy = n.position?.y ?? 0;
@@ -243,12 +250,14 @@ const MindMap: React.FC<MindMapProps> = ({
             }
             return n;
           });
+          setNodes(updated);
         }
-      });
-      setNodes(updated);
-    },
-    [nodes, edges, setNodes]
-  );
+      }
+    });
+  },
+  [nodes, edges, setNodes]
+);
+
 
   // --- Initial Mind Map
   useEffect(() => {
