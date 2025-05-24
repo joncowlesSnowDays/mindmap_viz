@@ -23,9 +23,10 @@ interface MindMapProps {
 }
 
 const fitViewOptions = { padding: 0.18, includeHiddenNodes: true };
-const centerX = 400;
-const centerY = 300;
-const layerRadius = 85; // Tighter layout
+const startX = 400;     // Center X of map
+const startY = 40;      // Top Y of map
+const xGap = 180;       // Horizontal spacing between siblings
+const yGap = 100;       // Vertical spacing between layers
 
 // --- Helper Functions ---
 function getChildMap(edges: Edge[]) {
@@ -37,62 +38,44 @@ function getChildMap(edges: Edge[]) {
   return childMap;
 }
 
-// --- Main Radial Layout with jitter ---
-function assignRadialPositions(
-  nodes: Node[], edges: Edge[], rootId: string, center: { x: number; y: number },
-  layerRadius: number = 85, layer: number = 1
+// --- Top-Down Tree Layout ---
+function assignTreePositions(
+  nodes: Node[],
+  edges: Edge[],
+  rootId: string,
+  startX: number = 400,
+  startY: number = 40,
+  xGap: number = 180,
+  yGap: number = 100
 ) {
   const childMap = getChildMap(edges);
-  const idToNode: Record<string, Node> = Object.fromEntries(nodes.map((n) => [n.id, n]));
-  function placeChildren(parentId: string, parentPos: { x: number; y: number }, currLayer: number) {
-    const children = childMap[parentId] || [];
-    if (!children.length) return;
-    const angleInc = (2 * Math.PI) / children.length;
-    const radius = layerRadius * currLayer;
+  const idToNode: Record<string, Node> = Object.fromEntries(nodes.map(n => [n.id, n]));
+  let nextX = startX;
 
-    children.forEach((childId, idx) => {
-      // Moderate JITTER
-      const angle = idx * angleInc + (Math.random() - 0.5) * 0.24; // Larger jitter!
-      idToNode[childId].position = {
-        x: parentPos.x + radius * Math.cos(angle),
-        y: parentPos.y + radius * Math.sin(angle),
+  function placeSubtree(id: string, depth: number) {
+    const children = childMap[id] || [];
+    let myX = nextX;
+    let myY = startY + depth * yGap;
+    if (children.length === 0) {
+      // Leaf: assign and increment
+      idToNode[id].position = { x: myX, y: myY };
+      nextX += xGap;
+    } else {
+      // Non-leaf: recursively place children, center parent above
+      const start = nextX;
+      children.forEach(childId => placeSubtree(childId, depth + 1));
+      const end = nextX - xGap;
+      idToNode[id].position = {
+        x: (start + end) / 2,
+        y: myY
       };
-      placeChildren(childId, idToNode[childId].position, currLayer + 1);
-    });
+    }
   }
+
   if (idToNode[rootId]) {
-    idToNode[rootId].position = { ...center };
-    placeChildren(rootId, center, 1);
+    placeSubtree(rootId, 0);
   }
   return Object.values(idToNode);
-}
-
-// --- Avoid Node Overlap (simple post-processing) ---
-function avoidNodeOverlap(nodes: Node[], minDist = 150, maxIters = 12) {
-  let updatedNodes = nodes.map(n => ({ ...n, position: { ...n.position } }));
-
-  for (let iter = 0; iter < maxIters; ++iter) {
-    let moved = false;
-    for (let i = 0; i < updatedNodes.length; i++) {
-      for (let j = i + 1; j < updatedNodes.length; j++) {
-        const a = updatedNodes[i].position;
-        const b = updatedNodes[j].position;
-        const dx = a.x - b.x, dy = a.y - b.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < minDist) {
-          moved = true;
-          const move = (minDist - dist) / 2 + 1;
-          const angle = Math.atan2(dy, dx) || (Math.random() * 2 * Math.PI);
-          updatedNodes[i].position.x += Math.cos(angle) * move;
-          updatedNodes[i].position.y += Math.sin(angle) * move;
-          updatedNodes[j].position.x -= Math.cos(angle) * move;
-          updatedNodes[j].position.y -= Math.sin(angle) * move;
-        }
-      }
-    }
-    if (!moved) break; // Early exit if nothing moved
-  }
-  return updatedNodes;
 }
 
 // -------- Main Component --------
@@ -107,31 +90,29 @@ const MindMap: React.FC<MindMapProps> = ({
   const mindMapContextRef = useRef<{ nodes: Node[]; edges: Edge[] }>({ nodes: [], edges: [] });
 
   // --- Initial Mind Map
- useEffect(() => {
-  const updateMindMap = async () => {
-    if (!userQuery) return;
-    expandedCache.current = {};
-    mindMapContextRef.current = { nodes: [], edges: [] };
-    const gptData = await queryGPT(userQuery, mindMapContextRef.current, null);
-    if (gptData && gptData.nodes && gptData.edges) {
-      const { nodes: baseNodes, edges: baseEdges } = transformGPTToFlow(gptData);
-      const mainNodeId = baseNodes[0]?.id || "main";
-      let positionedNodes = assignRadialPositions(
-        baseNodes, baseEdges, mainNodeId, { x: centerX, y: centerY }, layerRadius
-      );
-      positionedNodes = avoidNodeOverlap(positionedNodes, 90);
-      setNodes(positionedNodes);
-      setEdges(baseEdges);
-      mindMapContextRef.current = { nodes: positionedNodes, edges: baseEdges };
-      if (reactFlowInstance) {
-        setTimeout(() => reactFlowInstance.fitView(fitViewOptions), 100);
+  useEffect(() => {
+    const updateMindMap = async () => {
+      if (!userQuery) return;
+      expandedCache.current = {};
+      mindMapContextRef.current = { nodes: [], edges: [] };
+      const gptData = await queryGPT(userQuery, mindMapContextRef.current, null);
+      if (gptData && gptData.nodes && gptData.edges) {
+        const { nodes: baseNodes, edges: baseEdges } = transformGPTToFlow(gptData);
+        const mainNodeId = baseNodes[0]?.id || "main";
+        let positionedNodes = assignTreePositions(
+          baseNodes, baseEdges, mainNodeId, startX, startY, xGap, yGap
+        );
+        setNodes(positionedNodes);
+        setEdges(baseEdges);
+        mindMapContextRef.current = { nodes: positionedNodes, edges: baseEdges };
+        if (reactFlowInstance) {
+          setTimeout(() => reactFlowInstance.fitView(fitViewOptions), 100);
+        }
       }
-    }
-  };
-  updateMindMap();
-  // 👇 Only update on triggerUpdate!
-}, [triggerUpdate]);
-
+    };
+    updateMindMap();
+    // 👇 Only update on triggerUpdate!
+  }, [triggerUpdate]);
 
   // --- Node click expand
   const onNodeClick = useCallback(
@@ -144,10 +125,9 @@ const MindMap: React.FC<MindMapProps> = ({
         const { nodes: newNodes, edges: newEdges } = transformGPTToFlow(gptData);
         const merged = mergeExpandedNodesAndEdges(nodes, edges, newNodes, newEdges, node.id);
         const mainNodeId = nodes[0]?.id || "main";
-        let positionedNodes = assignRadialPositions(
-          merged.nodes, merged.edges, mainNodeId, { x: centerX, y: centerY }, layerRadius
+        let positionedNodes = assignTreePositions(
+          merged.nodes, merged.edges, mainNodeId, startX, startY, xGap, yGap
         );
-        positionedNodes = avoidNodeOverlap(positionedNodes, 90);
         setNodes(positionedNodes);
         setEdges(merged.edges);
         mindMapContextRef.current = { nodes: positionedNodes, edges: merged.edges };
@@ -167,8 +147,6 @@ const MindMap: React.FC<MindMapProps> = ({
     const expandRandomNodes = async () => {
       let localExpanded = { ...expandedCache.current };
       let localNodes = [...nodes], localEdges = [...edges];
-
-      // Get all *expandable* nodes (not already expanded)
       let expandable = () => localNodes.filter(n => !localExpanded[n.id]);
       let count = Math.min(automateCount, expandable().length);
 
@@ -187,10 +165,9 @@ const MindMap: React.FC<MindMapProps> = ({
           const { nodes: newNodes, edges: newEdges } = transformGPTToFlow(gptData);
           const merged = mergeExpandedNodesAndEdges(localNodes, localEdges, newNodes, newEdges, picked.id);
           const mainNodeId = merged.nodes[0]?.id || "main";
-          let positionedNodes = assignRadialPositions(
-            merged.nodes, merged.edges, mainNodeId, { x: centerX, y: centerY }, layerRadius
+          let positionedNodes = assignTreePositions(
+            merged.nodes, merged.edges, mainNodeId, startX, startY, xGap, yGap
           );
-          positionedNodes = avoidNodeOverlap(positionedNodes, 90);
           localNodes = positionedNodes;
           localEdges = merged.edges;
           setNodes(positionedNodes);
@@ -205,7 +182,6 @@ const MindMap: React.FC<MindMapProps> = ({
     };
     expandRandomNodes();
     return () => { cancelled = true; };
-    // eslint-disable-next-line
   }, [automateSignal]);
 
   const onConnect = useCallback(
