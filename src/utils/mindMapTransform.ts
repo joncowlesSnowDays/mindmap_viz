@@ -1,4 +1,4 @@
-import { Node, Edge } from "react-flow";
+import { Node, Edge } from "reactflow";
 
 /*
  Expected GPT output:
