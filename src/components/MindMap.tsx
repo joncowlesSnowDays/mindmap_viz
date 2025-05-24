@@ -48,7 +48,7 @@ function assignStaggeredTreePositions(
   startY: number = 40,
   xGap: number = 60,
   yGap: number = 120,
-  staggerY: number = 26 // how much to fan out vertically per child index
+  staggerY: number = 26
 ) {
   const childMap = getChildMap(edges);
   const idToNode: Record<string, Node> = Object.fromEntries(nodes.map(n => [n.id, n]));
@@ -60,18 +60,17 @@ function assignStaggeredTreePositions(
 
   function placeSubtree(id: string, depth: number, x: number, y: number) {
     const children = childMap[id] || [];
-    const myWidth = labelWidth(id);
     idToNode[id].position = { x, y };
     if (!children.length) return;
 
-    // Compute total horizontal width for all children
     const totalWidth = children.reduce((sum, c) => sum + labelWidth(c), 0) + xGap * (children.length - 1);
     let left = x - totalWidth / 2 + labelWidth(children[0]) / 2;
+    const n = children.length;
+    const centerIdx = (n - 1) / 2;
 
-    // Alternately stagger children up/down: [down, up, down, up,...] from parent y
     children.forEach((childId, i) => {
-      const sign = (i % 2 === 0) ? 1 : -1; // Alternate +/-
-      const offset = Math.ceil(i / 2) * staggerY * sign;
+      // Fan out vertically above and below the parent, but all at y + yGap
+      const offset = (i - centerIdx) * staggerY;
       const lx = left + labelWidth(childId) / 2;
       placeSubtree(childId, depth + 1, lx, y + yGap + offset);
       left += labelWidth(childId) + xGap;
@@ -83,6 +82,7 @@ function assignStaggeredTreePositions(
   }
   return Object.values(idToNode);
 }
+
 
 
 
