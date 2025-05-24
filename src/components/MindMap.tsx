@@ -107,30 +107,31 @@ const MindMap: React.FC<MindMapProps> = ({
   const mindMapContextRef = useRef<{ nodes: Node[]; edges: Edge[] }>({ nodes: [], edges: [] });
 
   // --- Initial Mind Map
-  useEffect(() => {
-    const updateMindMap = async () => {
-      if (!userQuery) return;
-      expandedCache.current = {};
-      mindMapContextRef.current = { nodes: [], edges: [] };
-      const gptData = await queryGPT(userQuery, mindMapContextRef.current, null);
-      if (gptData && gptData.nodes && gptData.edges) {
-        const { nodes: baseNodes, edges: baseEdges } = transformGPTToFlow(gptData);
-        const mainNodeId = baseNodes[0]?.id || "main";
-        let positionedNodes = assignRadialPositions(
-          baseNodes, baseEdges, mainNodeId, { x: centerX, y: centerY }, layerRadius
-        );
-        positionedNodes = avoidNodeOverlap(positionedNodes, 90);
-        setNodes(positionedNodes);
-        setEdges(baseEdges);
-        mindMapContextRef.current = { nodes: positionedNodes, edges: baseEdges };
-        if (reactFlowInstance) {
-          setTimeout(() => reactFlowInstance.fitView(fitViewOptions), 100);
-        }
+ useEffect(() => {
+  const updateMindMap = async () => {
+    if (!userQuery) return;
+    expandedCache.current = {};
+    mindMapContextRef.current = { nodes: [], edges: [] };
+    const gptData = await queryGPT(userQuery, mindMapContextRef.current, null);
+    if (gptData && gptData.nodes && gptData.edges) {
+      const { nodes: baseNodes, edges: baseEdges } = transformGPTToFlow(gptData);
+      const mainNodeId = baseNodes[0]?.id || "main";
+      let positionedNodes = assignRadialPositions(
+        baseNodes, baseEdges, mainNodeId, { x: centerX, y: centerY }, layerRadius
+      );
+      positionedNodes = avoidNodeOverlap(positionedNodes, 90);
+      setNodes(positionedNodes);
+      setEdges(baseEdges);
+      mindMapContextRef.current = { nodes: positionedNodes, edges: baseEdges };
+      if (reactFlowInstance) {
+        setTimeout(() => reactFlowInstance.fitView(fitViewOptions), 100);
       }
-    };
-    updateMindMap();
-    // eslint-disable-next-line
-  }, [triggerUpdate, userQuery, reactFlowInstance]);
+    }
+  };
+  updateMindMap();
+  // 👇 Only update on triggerUpdate!
+}, [triggerUpdate]);
+
 
   // --- Node click expand
   const onNodeClick = useCallback(
