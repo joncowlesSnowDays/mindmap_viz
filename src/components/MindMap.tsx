@@ -24,25 +24,25 @@ interface MindMapProps {
   automateSignal?: number;
 }
 
+// Layout params (tweak for your design)
 const fitViewOptions = { padding: 0.18, includeHiddenNodes: true };
-const startX = 400;     // Center X of map
-const startY = 40;      // Top Y of map
-const xGap = 20;        // Minimum horizontal spacing between siblings (tune!)
-const yGap = 110;       // Vertical spacing between layers (tune!)
-const staggerY = 32;    // How much to stagger children up/down
-const minNodePadding = 20; // px, padding per side for bounding box estimation
-const minNodeHeight = 48;  // px, minimum height of a node
+const startX = 400;
+const startY = 40;
+const xGap = 20;
+const yGap = 110;
+const staggerY = 32;
+const minNodePadding = 20;
+const minNodeHeight = 48;
 
-// --- Estimate node box size (width/height) based on label ---
+// --- Node size estimation ---
 function estimateNodeWidth(label: string): number {
-  // Font: 16px, ~8.5px per char + padding, min 80
   return Math.max(80, label.length * 8.5 + minNodePadding * 2);
 }
 function estimateNodeHeight(): number {
   return minNodeHeight;
 }
 
-// --- Helper: Build child map from edges ---
+// --- Child map ---
 function getChildMap(edges: Edge[]) {
   const childMap: Record<string, string[]> = {};
   edges.forEach((e) => {
@@ -52,21 +52,17 @@ function getChildMap(edges: Edge[]) {
   return childMap;
 }
 
-// --- Get all descendants (recursive) for parent/child drag logic ---
-function getDescendantIds(parentId: string, childMap: Record<string, string[]>): string[] {
-  const result: string[] = [];
-  function traverse(id: string) {
-    const children = childMap[id] || [];
-    for (const child of children) {
-      result.push(child);
-      traverse(child);
-    }
+// --- Descendant helper ---
+function getDescendantIds(nodeId: string, childMap: Record<string, string[]>, acc: string[] = []): string[] {
+  const children = childMap[nodeId] || [];
+  for (const c of children) {
+    acc.push(c);
+    getDescendantIds(c, childMap, acc);
   }
-  traverse(parentId);
-  return result;
+  return acc;
 }
 
-// --- Staggered Tree Layout ---
+// --- Staggered Tree with manual position override ---
 function assignStaggeredTreePositions(
   nodes: Node[],
   edges: Edge[],
@@ -75,7 +71,8 @@ function assignStaggeredTreePositions(
   startY: number = 40,
   xGap: number = 70,
   yGap: number = 120,
-  staggerY: number = 32 // Amount to stagger vertically per child index
+  staggerY: number = 32,
+  userPositions: Record<string, {x: number, y: number}> = {}
 ) {
   const childMap = getChildMap(edges);
   const idToNode: Record<string, Node> = Object.fromEntries(nodes.map(n => [n.id, n]));
@@ -83,34 +80,26 @@ function assignStaggeredTreePositions(
   function nodeLabel(id: string): string {
     return idToNode[id]?.data?.label || "";
   }
-
   function nodeWidth(id: string): number {
     return estimateNodeWidth(nodeLabel(id));
   }
-  function nodeHeight(): number {
-    return estimateNodeHeight();
-  }
-
   function placeSubtree(id: string, depth: number, x: number, y: number) {
     const children = childMap[id] || [];
-    const myWidth = nodeWidth(id);
-    idToNode[id].position = { x, y };
+    // --- Always honor user-set position if present
+    const manual = userPositions[id];
+    idToNode[id].position = manual ? { ...manual } : { x, y };
     if (!children.length) return;
 
-    // Stagger: Distribute children horizontally & vertically, alternate up/down from center
     const totalChildrenWidth =
       children.reduce((sum, cid) => sum + nodeWidth(cid), 0) +
       xGap * (children.length - 1);
 
     let left = x - totalChildrenWidth / 2 + nodeWidth(children[0]) / 2;
-
     const centerIdx = (children.length - 1) / 2;
     children.forEach((childId, i) => {
-      // Alternate above/below: (0: center), (1: up), (2: down), (3: up2), (4: down2) etc
       const sign = (i % 2 === 0) ? 1 : -1;
       const offsetIdx = Math.floor((i + 1) / 2);
       const dy = sign * offsetIdx * staggerY;
-
       const childX = left + nodeWidth(childId) / 2;
       placeSubtree(childId, depth + 1, childX, y + yGap + dy);
       left += nodeWidth(childId) + xGap;
@@ -126,10 +115,9 @@ function assignStaggeredTreePositions(
 // --- Overlap Resolver (Bounding Box Collision) ---
 function resolveNodeOverlapsBoundingBox(
   nodes: Node[],
-  minGap = 12,   // Minimum extra gap between boxes
-  maxIters = 24  // Number of times to push apart
+  minGap = 12,
+  maxIters = 24
 ) {
-  // Give each node a bounding box
   let boxes = nodes.map(n => {
     const label = n.data?.label || "";
     const w = estimateNodeWidth(label);
@@ -155,7 +143,6 @@ function resolveNodeOverlapsBoundingBox(
         const yOverlap = Math.max(0, Math.min(a.y + a.h + minGap, b.y + b.h + minGap) - Math.max(a.y, b.y));
         if (xOverlap > minGap && yOverlap > minGap) {
           moved = true;
-          // Move apart along axis of greatest overlap
           if (xOverlap > yOverlap) {
             const push = (yOverlap - minGap) / 2 + 1;
             boxes[i].position.y -= push;
@@ -165,7 +152,6 @@ function resolveNodeOverlapsBoundingBox(
             boxes[i].position.x -= push;
             boxes[j].position.x += push;
           }
-          // Update bounding box
           boxes[i]._box.x = boxes[i].position.x - a.w / 2;
           boxes[j]._box.x = boxes[j].position.x - b.w / 2;
           boxes[i]._box.y = boxes[i].position.y - a.h / 2;
@@ -175,41 +161,36 @@ function resolveNodeOverlapsBoundingBox(
     }
     if (!moved) break;
   }
-  // Remove _box helper
   return boxes.map(({ _box, ...node }) => node);
 }
 
-// -------- Main Component --------
 const MindMap: React.FC<MindMapProps> = ({
   userQuery, triggerUpdate, automateCount = 3, automateSignal = 0,
 }) => {
-  const [nodes, setNodes, rawOnNodesChange] = useNodesState([]);
+  const [nodes, setNodes, _onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const { queryGPT, loading } = useGPT();
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
   const expandedCache = useRef<Record<string, boolean>>({});
   const mindMapContextRef = useRef<{ nodes: Node[]; edges: Edge[] }>({ nodes: [], edges: [] });
+  // --- Track manual node positions by id
+  const userPositionsRef = useRef<Record<string, {x: number, y: number}>>({});
 
-  // --- Custom onNodesChange for parent/child drag ---
-const onNodesChange = useCallback<OnNodesChange>(
-  (changes: NodeChange[]) => {
-    let updated = [...nodes];
-    const childMap = getChildMap(edges);
+  // --- Custom onNodesChange to handle drag and descendant move
+  const onNodesChange = useCallback<OnNodesChange>(
+    (changes: NodeChange[]) => {
+      let updated = [...nodes];
+      const childMap = getChildMap(edges);
 
-    changes.forEach(change => {
-      if (change.type === "position" && change.dragging && change.position) {
-        // Is this the root node?
-        if (change.id === (nodes[0]?.id || "main")) {
-          // Re-layout with new root position!
-          const newX = change.position.x ?? startX;
-          const newY = change.position.y ?? startY;
-          let repositioned = assignStaggeredTreePositions(
-            nodes, edges, change.id, newX, newY, xGap, yGap, staggerY
-          );
-          repositioned = resolveNodeOverlapsBoundingBox(repositioned, 10, 32);
-          setNodes(repositioned);
-        } else {
-          // Child/descendant logic as before (move subtree)
+      changes.forEach(change => {
+        if (change.type === "position" && change.position) {
+          // Save user-moved position
+          userPositionsRef.current[change.id] = {
+            x: change.position.x ?? 0,
+            y: change.position.y ?? 0,
+          };
+
+          // Move descendants as well
           const descendantIds = getDescendantIds(change.id, childMap);
           const node = updated.find(n => n.id === change.id);
           const prevX = node?.position?.x ?? 0;
@@ -221,43 +202,32 @@ const onNodesChange = useCallback<OnNodesChange>(
 
           updated = updated.map(n => {
             if (n.id === change.id) {
-              if (
-                change.position &&
-                typeof change.position.x === "number" &&
-                typeof change.position.y === "number"
-              ) {
-                return {
-                  ...n,
-                  position: {
-                    x: change.position.x,
-                    y: change.position.y,
-                  },
-                };
-              } else {
-                return n;
-              }
+              return {
+                ...n,
+                position: { x: newX, y: newY }
+              };
             }
             if (descendantIds.includes(n.id)) {
               const cx = n.position?.x ?? 0;
               const cy = n.position?.y ?? 0;
+              // Update manual positions of descendants
+              userPositionsRef.current[n.id] = {
+                x: cx + dx,
+                y: cy + dy
+              };
               return {
                 ...n,
-                position: {
-                  x: cx + dx,
-                  y: cy + dy,
-                },
+                position: { x: cx + dx, y: cy + dy }
               };
             }
             return n;
           });
-          setNodes(updated);
         }
-      }
-    });
-  },
-  [nodes, edges, setNodes]
-);
-
+      });
+      setNodes(updated);
+    },
+    [nodes, edges, setNodes]
+  );
 
   // --- Initial Mind Map
   useEffect(() => {
@@ -265,12 +235,14 @@ const onNodesChange = useCallback<OnNodesChange>(
       if (!userQuery) return;
       expandedCache.current = {};
       mindMapContextRef.current = { nodes: [], edges: [] };
+      // Reset user manual positions
+      userPositionsRef.current = {};
       const gptData = await queryGPT(userQuery, mindMapContextRef.current, null);
       if (gptData && gptData.nodes && gptData.edges) {
         const { nodes: baseNodes, edges: baseEdges } = transformGPTToFlow(gptData);
         const mainNodeId = baseNodes[0]?.id || "main";
         let positionedNodes = assignStaggeredTreePositions(
-          baseNodes, baseEdges, mainNodeId, startX, startY, xGap, yGap, staggerY
+          baseNodes, baseEdges, mainNodeId, startX, startY, xGap, yGap, staggerY, userPositionsRef.current
         );
         positionedNodes = resolveNodeOverlapsBoundingBox(positionedNodes, 10, 32);
         setNodes(positionedNodes);
@@ -282,7 +254,8 @@ const onNodesChange = useCallback<OnNodesChange>(
       }
     };
     updateMindMap();
-    // 👇 Only update on triggerUpdate!
+    // Only update on triggerUpdate!
+    // eslint-disable-next-line
   }, [triggerUpdate]);
 
   // --- Node click expand
@@ -297,7 +270,7 @@ const onNodesChange = useCallback<OnNodesChange>(
         const merged = mergeExpandedNodesAndEdges(nodes, edges, newNodes, newEdges, node.id);
         const mainNodeId = nodes[0]?.id || "main";
         let positionedNodes = assignStaggeredTreePositions(
-          merged.nodes, merged.edges, mainNodeId, startX, startY, xGap, yGap, staggerY
+          merged.nodes, merged.edges, mainNodeId, startX, startY, xGap, yGap, staggerY, userPositionsRef.current
         );
         positionedNodes = resolveNodeOverlapsBoundingBox(positionedNodes, 10, 32);
         setNodes(positionedNodes);
@@ -311,7 +284,7 @@ const onNodesChange = useCallback<OnNodesChange>(
     [nodes, edges, queryGPT, reactFlowInstance]
   );
 
-  // -------- AUTOMATION LOGIC --------
+  // --- AUTOMATION LOGIC ---
   useEffect(() => {
     if (!automateSignal || nodes.length === 0) return;
 
@@ -338,7 +311,7 @@ const onNodesChange = useCallback<OnNodesChange>(
           const merged = mergeExpandedNodesAndEdges(localNodes, localEdges, newNodes, newEdges, picked.id);
           const mainNodeId = merged.nodes[0]?.id || "main";
           let positionedNodes = assignStaggeredTreePositions(
-            merged.nodes, merged.edges, mainNodeId, startX, startY, xGap, yGap, staggerY
+            merged.nodes, merged.edges, mainNodeId, startX, startY, xGap, yGap, staggerY, userPositionsRef.current
           );
           positionedNodes = resolveNodeOverlapsBoundingBox(positionedNodes, 10, 32);
           localNodes = positionedNodes;
@@ -355,6 +328,7 @@ const onNodesChange = useCallback<OnNodesChange>(
     };
     expandRandomNodes();
     return () => { cancelled = true; };
+    // eslint-disable-next-line
   }, [automateSignal]);
 
   const onConnect = useCallback(
