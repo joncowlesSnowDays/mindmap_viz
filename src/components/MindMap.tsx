@@ -40,22 +40,23 @@ function getChildMap(edges: Edge[]) {
 }
 
 // --- Staggered Tree Layout ---
-function assignStaggeredTreePositions(
+ffunction assignStaggeredTreePositions(
   nodes: Node[],
   edges: Edge[],
   rootId: string,
   startX: number = 400,
   startY: number = 40,
-  xGap: number = 40,
-  yGap: number = 90,
-  staggerY: number = 25
+  xGap: number = 30,         // even smaller!
+  yGap: number = 110,
+  staggerY: number = 36,
+  overlapFactor: number = 0.65
 ) {
   const childMap = getChildMap(edges);
   const idToNode: Record<string, Node> = Object.fromEntries(nodes.map(n => [n.id, n]));
 
   function labelWidth(id: string): number {
     const label = idToNode[id]?.data?.label || '';
-    return Math.max(80, label.length * 7 + 32);
+    return Math.max(64, label.length * 6 + 22); // tighter minimum
   }
 
   function placeSubtree(id: string, depth: number, x: number, y: number) {
@@ -63,25 +64,24 @@ function assignStaggeredTreePositions(
     idToNode[id].position = { x, y };
     if (!children.length) return;
 
-    // Calculate widths
     const widths = children.map(childId => labelWidth(childId));
-    const totalWidth = widths.reduce((a, b) => a + b, 0) + xGap * (children.length - 1);
+    const totalWidth = widths.reduce((a, b) => a + b * overlapFactor, 0) + xGap * (children.length - 1);
 
-    // Compute starting X
-    let currX = x - totalWidth / 2 + widths[0] / 2;
+    let currX = x - totalWidth / 2 + widths[0] * overlapFactor / 2;
 
-    // Stagger up/down
     const centerY = y + yGap;
 
-    // Alternate: 0=center, 1=up, 2=down, 3=up, 4=down, etc.
     children.forEach((childId, i) => {
       let offsetY = 0;
       if (i === 0) offsetY = 0;
-      else if (i % 2 === 1) offsetY = -Math.ceil(i / 2) * staggerY; // up
-      else offsetY = Math.ceil(i / 2) * staggerY; // down
+      else if (i % 2 === 1) offsetY = -Math.ceil(i / 2) * staggerY;
+      else offsetY = Math.ceil(i / 2) * staggerY;
 
       placeSubtree(childId, depth + 1, currX, centerY + offsetY);
-      currX += widths[i] / 2 + (widths[i + 1] ? widths[i + 1] / 2 : 0) + xGap;
+      // Move to next center
+      currX += widths[i] * overlapFactor / 2 +
+               (widths[i + 1] ? widths[i + 1] * overlapFactor / 2 : 0) +
+               xGap;
     });
   }
 
@@ -90,8 +90,6 @@ function assignStaggeredTreePositions(
   }
   return Object.values(idToNode);
 }
-
-
 
 // -------- Main Component --------
 const MindMap: React.FC<MindMapProps> = ({
