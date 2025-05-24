@@ -23,7 +23,9 @@ interface MindMapProps {
 }
 
 const fitViewOptions = { padding: 0.18, includeHiddenNodes: true };
-const centerX = 400, centerY = 300, layerRadius = 250;
+const centerX = 400;
+const centerY = 300;
+const layerRadius = 140; 
 
 // Helper functions (as before)
 function getChildMap(edges: Edge[]) {
@@ -35,9 +37,11 @@ function getChildMap(edges: Edge[]) {
   return childMap;
 }
 
+// Try values between 50-100 for tightest layouts
+
 function assignRadialPositions(
   nodes: Node[], edges: Edge[], rootId: string, center: { x: number; y: number },
-  layerRadius: number = 140, layer: number = 1
+  layerRadius: number = 70, layer: number = 1
 ) {
   const childMap = getChildMap(edges);
   const idToNode: Record<string, Node> = Object.fromEntries(nodes.map((n) => [n.id, n]));
@@ -46,8 +50,10 @@ function assignRadialPositions(
     if (!children.length) return;
     const angleInc = (2 * Math.PI) / children.length;
     const radius = layerRadius * currLayer;
+
     children.forEach((childId, idx) => {
-      const angle = idx * angleInc + (Math.random() - 0.5) * 0.25;
+      // LESS JITTER for cleaner, tighter layouts
+      const angle = idx * angleInc + (Math.random() - 0.5) * 0.08;
       idToNode[childId].position = {
         x: parentPos.x + radius * Math.cos(angle),
         y: parentPos.y + radius * Math.sin(angle),
@@ -61,6 +67,7 @@ function assignRadialPositions(
   }
   return Object.values(idToNode);
 }
+
 
 // -------- Main Component --------
 const MindMap: React.FC<MindMapProps> = ({
