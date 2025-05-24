@@ -46,58 +46,69 @@ function assignTreePositions(
   rootId: string,
   startX: number = 400,
   startY: number = 40,
-  baseGap: number = 70,
+  baseGap: number = 60,
   charWidth: number = 8.5,
   yGap: number = 100,
-  maxSiblingGap: number = 170    // Add a maximum allowed xGap for extra control
+  maxSiblingGap: number = 120,
+  wrapAt: number = 5           // How many siblings per row before wrapping
 ) {
   const childMap = getChildMap(edges);
   const idToNode: Record<string, Node> = Object.fromEntries(nodes.map(n => [n.id, n]));
 
-  // Compute the width required for a label (add padding)
   function labelWidth(id: string): number {
     const label = idToNode[id]?.data?.label || '';
     return Math.max(60, label.length * charWidth + 40); // 40px pad
   }
 
-  // Recursively layout subtree, returning total width occupied
-  function placeSubtree(id: string, depth: number, x: number): number {
+  function placeSubtree(id: string, depth: number, x: number, y: number): { width: number; height: number } {
     const children = childMap[id] || [];
-    let myY = startY + depth * yGap;
-    if (children.length === 0) {
-      // Leaf: just place and return its width
-      idToNode[id].position = { x, y: myY };
-      return labelWidth(id);
+    if (!children.length) {
+      idToNode[id].position = { x, y };
+      return { width: labelWidth(id), height: yGap };
     } else {
-      // Calculate width for each child
-      const gaps = children.map(childId => labelWidth(childId));
-      // Sibling gap = max label width in this group (capped)
-      let siblingGap = Math.min(
-        Math.max(baseGap, Math.max(...gaps)),
-        maxSiblingGap
-      );
-      // Compute total width needed for all children (with siblingGap between them)
-      let totalWidth = 0;
-      const childWidths: number[] = [];
-      for (let i = 0; i < children.length; ++i) {
-        const w = placeSubtree(children[i], depth + 1, x + totalWidth);
-        childWidths.push(w);
-        totalWidth += w;
-        if (i !== children.length - 1) totalWidth += siblingGap;
+      // Split children into rows of wrapAt
+      const rows: string[][] = [];
+      for (let i = 0; i < children.length; i += wrapAt) {
+        rows.push(children.slice(i, i + wrapAt));
       }
-      // Center self above the middle of the children
-      const myX = x + totalWidth / 2 - labelWidth(id) / 2;
-      idToNode[id].position = { x: myX, y: myY };
-      return Math.max(labelWidth(id), totalWidth);
+
+      let totalHeight = 0, totalWidth = 0;
+      let rowPositions: { x: number; y: number }[] = [];
+      let currY = y + yGap;
+
+      rows.forEach(row => {
+        let rowWidth = 0;
+        row.forEach((childId, i) => {
+          rowWidth += labelWidth(childId);
+          if (i !== row.length - 1) rowWidth += baseGap;
+        });
+
+        let rowX = x - rowWidth / 2;
+        let maxHeight = 0;
+
+        row.forEach(childId => {
+          const childW = labelWidth(childId);
+          const { width: childWidth, height: childHeight } = placeSubtree(childId, depth + 1, rowX + childW / 2, currY);
+          rowX += childW + baseGap;
+          maxHeight = Math.max(maxHeight, childHeight);
+        });
+
+        currY += maxHeight;
+        totalHeight += maxHeight;
+        totalWidth = Math.max(totalWidth, rowWidth);
+      });
+
+      idToNode[id].position = { x, y };
+      return { width: Math.max(labelWidth(id), totalWidth), height: totalHeight + yGap };
     }
   }
 
-  // Start root in center
   if (idToNode[rootId]) {
-    placeSubtree(rootId, 0, startX);
+    placeSubtree(rootId, 0, startX, startY);
   }
   return Object.values(idToNode);
 }
+
 
 // -------- Main Component --------
 const MindMap: React.FC<MindMapProps> = ({
