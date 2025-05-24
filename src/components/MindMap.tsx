@@ -23,13 +23,24 @@ interface MindMapProps {
 }
 
 const fitViewOptions = { padding: 0.18, includeHiddenNodes: true };
-const startX = 400;    // Center X of map
-const startY = 40;     // Top Y of map
-const xGap = 40;      // Horizontal gap between siblings (min)
-const yGap = 100;      // Vertical gap between layers
-const staggerY = 38;   // Vertical stagger within sibling group
+const startX = 400;     // Center X of map
+const startY = 40;      // Top Y of map
+const xGap = 45;        // Minimum horizontal spacing between siblings (tune!)
+const yGap = 110;       // Vertical spacing between layers (tune!)
+const staggerY = 32;    // How much to stagger children up/down
+const minNodePadding = 20; // px, padding per side for bounding box estimation
+const minNodeHeight = 48;  // px, minimum height of a node
 
-// --- Helper Functions ---
+// --- Estimate node box size (width/height) based on label ---
+function estimateNodeWidth(label: string): number {
+  // Font: 16px, ~8.5px per char + padding, min 80
+  return Math.max(80, label.length * 8.5 + minNodePadding * 2);
+}
+function estimateNodeHeight(): number {
+  return minNodeHeight;
+}
+
+// --- Helper: Build child map from edges ---
 function getChildMap(edges: Edge[]) {
   const childMap: Record<string, string[]> = {};
   edges.forEach((e) => {
@@ -46,42 +57,47 @@ function assignStaggeredTreePositions(
   rootId: string,
   startX: number = 400,
   startY: number = 40,
-  xGap: number = 30,         // even smaller!
-  yGap: number = 110,
-  staggerY: number = 36,
-  overlapFactor: number = 0.65
+  xGap: number = 70,
+  yGap: number = 120,
+  staggerY: number = 32 // Amount to stagger vertically per child index
 ) {
   const childMap = getChildMap(edges);
   const idToNode: Record<string, Node> = Object.fromEntries(nodes.map(n => [n.id, n]));
 
-  function labelWidth(id: string): number {
-    const label = idToNode[id]?.data?.label || '';
-    return Math.max(64, label.length * 6 + 22); // tighter minimum
+  function nodeLabel(id: string): string {
+    return idToNode[id]?.data?.label || "";
+  }
+
+  function nodeWidth(id: string): number {
+    return estimateNodeWidth(nodeLabel(id));
+  }
+  function nodeHeight(): number {
+    return estimateNodeHeight();
   }
 
   function placeSubtree(id: string, depth: number, x: number, y: number) {
     const children = childMap[id] || [];
+    const myWidth = nodeWidth(id);
     idToNode[id].position = { x, y };
     if (!children.length) return;
 
-    const widths = children.map(childId => labelWidth(childId));
-    const totalWidth = widths.reduce((a, b) => a + b * overlapFactor, 0) + xGap * (children.length - 1);
+    // Stagger: Distribute children horizontally & vertically, alternate up/down from center
+    const totalChildrenWidth =
+      children.reduce((sum, cid) => sum + nodeWidth(cid), 0) +
+      xGap * (children.length - 1);
 
-    let currX = x - totalWidth / 2 + widths[0] * overlapFactor / 2;
+    let left = x - totalChildrenWidth / 2 + nodeWidth(children[0]) / 2;
 
-    const centerY = y + yGap;
-
+    const centerIdx = (children.length - 1) / 2;
     children.forEach((childId, i) => {
-      let offsetY = 0;
-      if (i === 0) offsetY = 0;
-      else if (i % 2 === 1) offsetY = -Math.ceil(i / 2) * staggerY;
-      else offsetY = Math.ceil(i / 2) * staggerY;
+      // Alternate above/below: (0: center), (1: up), (2: down), (3: up2), (4: down2) etc
+      const sign = (i % 2 === 0) ? 1 : -1;
+      const offsetIdx = Math.floor((i + 1) / 2);
+      const dy = sign * offsetIdx * staggerY;
 
-      placeSubtree(childId, depth + 1, currX, centerY + offsetY);
-      // Move to next center
-      currX += widths[i] * overlapFactor / 2 +
-               (widths[i + 1] ? widths[i + 1] * overlapFactor / 2 : 0) +
-               xGap;
+      const childX = left + nodeWidth(childId) / 2;
+      placeSubtree(childId, depth + 1, childX, y + yGap + dy);
+      left += nodeWidth(childId) + xGap;
     });
   }
 
@@ -89,6 +105,62 @@ function assignStaggeredTreePositions(
     placeSubtree(rootId, 0, startX, startY);
   }
   return Object.values(idToNode);
+}
+
+// --- Overlap Resolver (Bounding Box Collision) ---
+function resolveNodeOverlapsBoundingBox(
+  nodes: Node[],
+  minGap = 12,   // Minimum extra gap between boxes
+  maxIters = 24  // Number of times to push apart
+) {
+  // Give each node a bounding box
+  let boxes = nodes.map(n => {
+    const label = n.data?.label || "";
+    const w = estimateNodeWidth(label);
+    const h = estimateNodeHeight();
+    return {
+      ...n,
+      _box: {
+        x: n.position.x - w / 2,
+        y: n.position.y - h / 2,
+        w, h,
+        centerX: n.position.x,
+        centerY: n.position.y,
+      }
+    };
+  });
+
+  for (let iter = 0; iter < maxIters; ++iter) {
+    let moved = false;
+    for (let i = 0; i < boxes.length; ++i) {
+      for (let j = i + 1; j < boxes.length; ++j) {
+        const a = boxes[i]._box, b = boxes[j]._box;
+        const xOverlap = Math.max(0, Math.min(a.x + a.w + minGap, b.x + b.w + minGap) - Math.max(a.x, b.x));
+        const yOverlap = Math.max(0, Math.min(a.y + a.h + minGap, b.y + b.h + minGap) - Math.max(a.y, b.y));
+        if (xOverlap > minGap && yOverlap > minGap) {
+          moved = true;
+          // Move apart along axis of greatest overlap
+          if (xOverlap > yOverlap) {
+            const push = (yOverlap - minGap) / 2 + 1;
+            boxes[i].position.y -= push;
+            boxes[j].position.y += push;
+          } else {
+            const push = (xOverlap - minGap) / 2 + 1;
+            boxes[i].position.x -= push;
+            boxes[j].position.x += push;
+          }
+          // Update bounding box
+          boxes[i]._box.x = boxes[i].position.x - a.w / 2;
+          boxes[j]._box.x = boxes[j].position.x - b.w / 2;
+          boxes[i]._box.y = boxes[i].position.y - a.h / 2;
+          boxes[j]._box.y = boxes[j].position.y - b.h / 2;
+        }
+      }
+    }
+    if (!moved) break;
+  }
+  // Remove _box helper
+  return boxes.map(({ _box, ...node }) => node);
 }
 
 // -------- Main Component --------
@@ -115,6 +187,7 @@ const MindMap: React.FC<MindMapProps> = ({
         let positionedNodes = assignStaggeredTreePositions(
           baseNodes, baseEdges, mainNodeId, startX, startY, xGap, yGap, staggerY
         );
+        positionedNodes = resolveNodeOverlapsBoundingBox(positionedNodes, 10, 32);
         setNodes(positionedNodes);
         setEdges(baseEdges);
         mindMapContextRef.current = { nodes: positionedNodes, edges: baseEdges };
@@ -141,6 +214,7 @@ const MindMap: React.FC<MindMapProps> = ({
         let positionedNodes = assignStaggeredTreePositions(
           merged.nodes, merged.edges, mainNodeId, startX, startY, xGap, yGap, staggerY
         );
+        positionedNodes = resolveNodeOverlapsBoundingBox(positionedNodes, 10, 32);
         setNodes(positionedNodes);
         setEdges(merged.edges);
         mindMapContextRef.current = { nodes: positionedNodes, edges: merged.edges };
@@ -181,6 +255,7 @@ const MindMap: React.FC<MindMapProps> = ({
           let positionedNodes = assignStaggeredTreePositions(
             merged.nodes, merged.edges, mainNodeId, startX, startY, xGap, yGap, staggerY
           );
+          positionedNodes = resolveNodeOverlapsBoundingBox(positionedNodes, 10, 32);
           localNodes = positionedNodes;
           localEdges = merged.edges;
           setNodes(positionedNodes);
