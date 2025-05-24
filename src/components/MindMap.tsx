@@ -28,7 +28,7 @@ const fitViewOptions = {
 
 const centerX = 400;
 const centerY = 300;
-const layerRadius = 250; // The "default" layer radius
+const layerRadius = 160; // The "default" layer radius
 
 // --- Layout Helpers ---
 function getChildMap(edges: Edge[]) {
@@ -48,7 +48,7 @@ function assignRadialPositions(
   edges: Edge[],
   rootId: string,
   center: { x: number; y: number },
-  layerRadius: number = 200,
+  layerRadius: number = 160,
   layer: number = 1
 ) {
   const childMap = getChildMap(edges);
