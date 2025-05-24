@@ -12,8 +12,8 @@ import ReactFlow, {
   MarkerType
 } from "reactflow";
 import "reactflow/dist/style.css";
-import { useGPT } from "../hooks/useGPT";
-import { transformGPTToFlow, mergeExpandedNodesAndEdges } from "../utils/mindMapTransform";
+import { useGPT } from "../hooks/useGPT.ts";
+import { transformGPTToFlow, mergeExpandedNodesAndEdges } from "../utils/mindMapTransform.ts";
 import Legend from "./Legend.tsx";
 
 interface MindMapProps {
