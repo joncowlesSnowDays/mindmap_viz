@@ -62,7 +62,7 @@ export function transformGPTToFlow(gptData: any): { nodes: Node[]; edges: Edge[]
       border: "1px solid #e5e7eb",
       opacity: n.preview ? 0.75 : 1,
       background: n.preview ? "#f9f5ff" : "#fff",
-      cursor: "pointer",
+      cursor: "grab", // <--- Updated for better drag/click experience
     },
   }));
 
