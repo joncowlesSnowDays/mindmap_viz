@@ -54,6 +54,9 @@ function assignRadialPositions(
   const childMap = getChildMap(edges);
   const idToNode: Record<string, Node> = Object.fromEntries(nodes.map((n) => [n.id, n]));
 
+  // Amount of random jitter to apply to each node (in pixels)
+  const jitter = 30; // You can tweak this value
+
   function placeSubtree(
     id: string,
     center: { x: number; y: number },
@@ -67,9 +70,12 @@ function assignRadialPositions(
     const angleSpan = aEnd - aStart;
     children.forEach((childId, idx) => {
       const angle = aStart + (angleSpan * (idx + 1)) / (children.length + 1);
+      // Add random jitter to each node's position
+      const jitterX = (Math.random() - 0.5) * jitter;
+      const jitterY = (Math.random() - 0.5) * jitter;
       idToNode[childId].position = {
-        x: center.x + radius * layer * Math.cos(angle),
-        y: center.y + radius * layer * Math.sin(angle),
+        x: center.x + radius * layer * Math.cos(angle) + jitterX,
+        y: center.y + radius * layer * Math.sin(angle) + jitterY,
       };
       placeSubtree(
         childId,
@@ -83,6 +89,7 @@ function assignRadialPositions(
     });
   }
 
+  // Place the root node at the center, no jitter for the root
   if (idToNode[rootId]) {
     idToNode[rootId].position = { ...center };
     placeSubtree(rootId, center, layerRadius, angleStart, angleEnd, layer, parentCount);
