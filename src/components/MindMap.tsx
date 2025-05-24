@@ -10,6 +10,7 @@ import ReactFlow, {
   Edge,
   Connection,
   MarkerType,
+  useReactFlow, // <<-- ADD THIS
 } from "reactflow";
 import "reactflow/dist/style.css";
 import { useGPT } from "../hooks/useGPT.ts";
@@ -97,10 +98,12 @@ function assignRadialPositions(
 }
 
 // --------------------
+
 const MindMap: React.FC<MindMapProps> = ({ userQuery, triggerUpdate }) => {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const { queryGPT, loading } = useGPT();
+  const reactFlowInstance = useReactFlow(); // <<-- NEW
 
   // Reference to current mind map state for context
   const mindMapContextRef = useRef<{ nodes: Node[]; edges: Edge[] }>({ nodes: [], edges: [] });
@@ -109,17 +112,28 @@ const MindMap: React.FC<MindMapProps> = ({ userQuery, triggerUpdate }) => {
   const onNodeClick = useCallback(
     async (event, node) => {
       mindMapContextRef.current = { nodes, edges };
-      // Pass the clicked node's id as selectedNodeId
       const gptData = await queryGPT(node.data.label || node.id, mindMapContextRef.current, node.id);
+
       if (gptData && gptData.nodes && gptData.edges) {
         let { nodes: newNodes, edges: newEdges } = transformGPTToFlow(gptData, nodes, edges);
         const mainNodeId = newNodes[0]?.id || "main";
         newNodes = assignRadialPositions(newNodes, newEdges, mainNodeId, { x: centerX, y: centerY });
+
+        // LOG the updated nodes and edges
+        console.log("GPT DATA (click):", gptData);
+        console.log("TRANSFORMED NODES (click):", newNodes);
+        console.log("TRANSFORMED EDGES (click):", newEdges);
+
         setNodes(newNodes);
         setEdges(newEdges);
+
+        // FIT VIEW to updated nodes/edges after next tick
+        setTimeout(() => {
+          reactFlowInstance.fitView(fitViewOptions);
+        }, 100);
       }
     },
-    [nodes, edges, queryGPT]
+    [nodes, edges, queryGPT, reactFlowInstance]
   );
 
   // On user query or trigger, update mind map using GPT
@@ -127,7 +141,6 @@ const MindMap: React.FC<MindMapProps> = ({ userQuery, triggerUpdate }) => {
     const updateMindMap = async () => {
       if (!userQuery) return;
       mindMapContextRef.current = { nodes, edges };
-      // On first time, pass selectedNodeId=null; otherwise undefined
       const isFirstTime = !nodes.length && !edges.length;
       const gptData = await queryGPT(
         userQuery,
@@ -138,13 +151,24 @@ const MindMap: React.FC<MindMapProps> = ({ userQuery, triggerUpdate }) => {
         let { nodes: newNodes, edges: newEdges } = transformGPTToFlow(gptData, nodes, edges);
         const mainNodeId = newNodes[0]?.id || "main";
         newNodes = assignRadialPositions(newNodes, newEdges, mainNodeId, { x: centerX, y: centerY });
+
+        // LOG the updated nodes and edges
+        console.log("GPT DATA (query):", gptData);
+        console.log("TRANSFORMED NODES (query):", newNodes);
+        console.log("TRANSFORMED EDGES (query):", newEdges);
+
         setNodes(newNodes);
         setEdges(newEdges);
+
+        // FIT VIEW to updated nodes/edges after next tick
+        setTimeout(() => {
+          reactFlowInstance.fitView(fitViewOptions);
+        }, 100);
       }
     };
     updateMindMap();
     // eslint-disable-next-line
-  }, [triggerUpdate, userQuery]);
+  }, [triggerUpdate, userQuery, reactFlowInstance]);
 
   // Allow user to manually connect nodes (drag edge)
   const onConnect = useCallback(
