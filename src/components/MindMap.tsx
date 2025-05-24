@@ -40,7 +40,7 @@ function getChildMap(edges: Edge[]) {
 }
 
 // --- Staggered Tree Layout ---
-ffunction assignStaggeredTreePositions(
+function assignStaggeredTreePositions(
   nodes: Node[],
   edges: Edge[],
   rootId: string,
