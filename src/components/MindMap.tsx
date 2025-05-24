@@ -9,7 +9,7 @@ import ReactFlow, {
   Node,
   Edge,
   Connection,
-  MarkerType
+  MarkerType,
 } from "reactflow";
 import "reactflow/dist/style.css";
 import { useGPT } from "../hooks/useGPT.ts";
@@ -22,14 +22,15 @@ interface MindMapProps {
 }
 
 const fitViewOptions = {
-  padding: 0.18, // Small padding for better centering
+  padding: 0.18,
   includeHiddenNodes: true,
 };
 
 const centerX = 400;
 const centerY = 300;
-const layerRadius = 120; // Tweak as needed
+const layerRadius = 250; // The "default" layer radius
 
+// --- Layout Helpers ---
 function getChildMap(edges: Edge[]) {
   const childMap: Record<string, string[]> = {};
   edges.forEach((e) => {
@@ -39,54 +40,43 @@ function getChildMap(edges: Edge[]) {
   return childMap;
 }
 
-// Recursively assign positions in concentric circles for all descendants (with jitter).
+/**
+ * Recursively position each parent's children in a full circle around it (with large jitter).
+ */
 function assignRadialPositions(
   nodes: Node[],
   edges: Edge[],
   rootId: string,
   center: { x: number; y: number },
   layerRadius: number = 200,
-  angleStart: number = 0,
-  angleEnd: number = 2 * Math.PI,
-  layer: number = 1,
-  parentCount: number = 1
+  layer: number = 1
 ) {
   const childMap = getChildMap(edges);
   const idToNode: Record<string, Node> = Object.fromEntries(nodes.map((n) => [n.id, n]));
 
-  function placeSubtree(
-    id: string,
-    center: { x: number; y: number },
-    radius: number,
-    aStart: number,
-    aEnd: number,
-    layer: number,
-    siblings: number
-  ) {
-    const children = childMap[id] || [];
-    const angleSpan = aEnd - aStart;
+  function placeChildren(parentId: string, parentPos: { x: number; y: number }, currLayer: number) {
+    const children = childMap[parentId] || [];
+    if (!children.length) return;
+    const angleInc = (2 * Math.PI) / children.length;
+    const radius = layerRadius * currLayer;
+
     children.forEach((childId, idx) => {
-      const angle = aStart + (angleSpan * (idx + 1)) / (children.length + 1);
-      const jitter = (Math.random() - 0.5) * 45; // small jitter
+      // Large jitter for "messier" or more organic layout
+      const angleJitter = (Math.random() - 0.5) * 1.2; // up to ±0.6 radians (~34°)
+      const radiusJitter = (Math.random() - 0.5) * (layerRadius * 0.6); // up to ±30% of layerRadius
+      const angle = idx * angleInc + angleJitter;
+      const r = radius + radiusJitter;
       idToNode[childId].position = {
-        x: center.x + (radius * layer + jitter) * Math.cos(angle),
-        y: center.y + (radius * layer + jitter) * Math.sin(angle),
+        x: parentPos.x + r * Math.cos(angle),
+        y: parentPos.y + r * Math.sin(angle),
       };
-      placeSubtree(
-        childId,
-        idToNode[childId].position,
-        radius,
-        angle - angleSpan / (2 * (children.length || 1)),
-        angle + angleSpan / (2 * (children.length || 1)),
-        layer + 1,
-        children.length
-      );
+      placeChildren(childId, idToNode[childId].position, currLayer + 1);
     });
   }
 
   if (idToNode[rootId]) {
     idToNode[rootId].position = { ...center };
-    placeSubtree(rootId, center, layerRadius, angleStart, angleEnd, layer, parentCount);
+    placeChildren(rootId, center, 1);
   }
   return Object.values(idToNode);
 }
@@ -98,32 +88,32 @@ const MindMap: React.FC<MindMapProps> = ({ userQuery, triggerUpdate }) => {
   const { queryGPT, loading } = useGPT();
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
 
-  // --- Store last expanded node id to avoid duplicate expansion ---
+  // --- Track expanded nodes to prevent duplicate expansion ---
   const expandedCache = useRef<Record<string, boolean>>({});
 
-  // Store full node/edge tree for expansion
+  // --- Mind map context cache for expansion ---
   const mindMapContextRef = useRef<{ nodes: Node[]; edges: Edge[] }>({ nodes: [], edges: [] });
 
-  // --- Initial Mind Map: NEW Query ---
+  // --- Initial map creation on new query ---
   useEffect(() => {
     const updateMindMap = async () => {
       if (!userQuery) return;
-      expandedCache.current = {}; // Reset expansion cache
-      mindMapContextRef.current = { nodes: [], edges: [] }; // Reset previous
+      expandedCache.current = {};
+      mindMapContextRef.current = { nodes: [], edges: [] };
       const gptData = await queryGPT(userQuery, mindMapContextRef.current, null);
       if (gptData && gptData.nodes && gptData.edges) {
         const { nodes: baseNodes, edges: baseEdges } = transformGPTToFlow(gptData);
         const mainNodeId = baseNodes[0]?.id || "main";
-        const positioned = assignRadialPositions(
+        const positionedNodes = assignRadialPositions(
           baseNodes,
           baseEdges,
           mainNodeId,
           { x: centerX, y: centerY },
           layerRadius
         );
-        setNodes(positioned);
+        setNodes(positionedNodes);
         setEdges(baseEdges);
-        mindMapContextRef.current = { nodes: positioned, edges: baseEdges };
+        mindMapContextRef.current = { nodes: positionedNodes, edges: baseEdges };
         if (reactFlowInstance) {
           setTimeout(() => reactFlowInstance.fitView(fitViewOptions), 100);
         }
@@ -133,11 +123,10 @@ const MindMap: React.FC<MindMapProps> = ({ userQuery, triggerUpdate }) => {
     // eslint-disable-next-line
   }, [triggerUpdate, userQuery, reactFlowInstance]);
 
-  // --- Node Expansion ---
+  // --- Node expansion (expanding a subtopic) ---
   const onNodeClick = useCallback(
     async (_event, node) => {
-      // Prevent duplicate expansion on same node
-      if (expandedCache.current[node.id]) return;
+      if (expandedCache.current[node.id]) return; // Only expand once
       expandedCache.current[node.id] = true;
 
       mindMapContextRef.current = { nodes, edges };
@@ -147,12 +136,12 @@ const MindMap: React.FC<MindMapProps> = ({ userQuery, triggerUpdate }) => {
         // Merge with current map, replacing only children of expanded node
         const merged = mergeExpandedNodesAndEdges(nodes, edges, newNodes, newEdges, node.id);
         const mainNodeId = nodes[0]?.id || "main";
-        const positioned = assignRadialPositions(
+        const positionedNodes = assignRadialPositions(
           merged.nodes, merged.edges, mainNodeId, { x: centerX, y: centerY }, layerRadius
         );
-        setNodes(positioned);
+        setNodes(positionedNodes);
         setEdges(merged.edges);
-        mindMapContextRef.current = { nodes: positioned, edges: merged.edges };
+        mindMapContextRef.current = { nodes: positionedNodes, edges: merged.edges };
         if (reactFlowInstance) {
           setTimeout(() => reactFlowInstance.fitView(fitViewOptions), 100);
         }

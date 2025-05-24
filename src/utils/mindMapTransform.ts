@@ -30,6 +30,13 @@ export function mergeExpandedNodesAndEdges(
   };
 }
 
+// --- Utility for random colors ---
+function randomColor() {
+  // Pastel random color
+  const h = Math.floor(Math.random() * 360);
+  return `hsl(${h}, 75%, 75%)`;
+}
+
 /*
  * Transforms GPT data to React Flow nodes and edges, with preview node style and arrow markers.
  */
@@ -39,7 +46,7 @@ export function transformGPTToFlow(gptData: any): { nodes: Node[]; edges: Edge[]
   // Map node data to React Flow node format
   const nodes: Node[] = gptData.nodes.map((n: any) => ({
     id: n.id,
-    type: "default", // Always use "default" for compatibility
+    type: "default",
     data: {
       label: n.label,
       group: n.group,
@@ -56,17 +63,14 @@ export function transformGPTToFlow(gptData: any): { nodes: Node[]; edges: Edge[]
     },
   }));
 
-  // Map edges, style with color, and add arrows
+  // Map edges, random color, arrow, and NO LABEL
   const edges: Edge[] = gptData.edges.map((e: any) => ({
     id: e.id,
     source: e.source,
     target: e.target,
-    label: e.type,
+    // label: e.type, // REMOVE LABEL
     style: {
-      stroke: e.type === "informs" ? "#3b82f6"
-        : e.type === "depends on" ? "#22c55e"
-        : e.type === "related" ? "#f59e42"
-        : "#444",
+      stroke: randomColor(),
       strokeWidth: 2,
     },
     markerEnd: { type: MarkerType.ArrowClosed },
