@@ -9,7 +9,6 @@ import ReactFlow, {
   Node,
   Edge,
   Connection,
-  MarkerType
 } from "reactflow";
 import "reactflow/dist/style.css";
 import { useGPT } from "../hooks/useGPT.ts";
@@ -19,18 +18,14 @@ import Legend from "./Legend.tsx";
 interface MindMapProps {
   userQuery: string;
   triggerUpdate: number;
-  resetSignal: number; // Add this prop
+  automateCount?: number;
+  automateSignal?: number;
 }
 
-const fitViewOptions = {
-  padding: 0.18,
-  includeHiddenNodes: true,
-};
+const fitViewOptions = { padding: 0.18, includeHiddenNodes: true };
+const centerX = 400, centerY = 300, layerRadius = 250;
 
-const centerX = 400;
-const centerY = 300;
-const layerRadius = 250;
-
+// Helper functions (as before)
 function getChildMap(edges: Edge[]) {
   const childMap: Record<string, string[]> = {};
   edges.forEach((e) => {
@@ -41,24 +36,18 @@ function getChildMap(edges: Edge[]) {
 }
 
 function assignRadialPositions(
-  nodes: Node[],
-  edges: Edge[],
-  rootId: string,
-  center: { x: number; y: number },
-  layerRadius: number = 140,
-  layer: number = 1
+  nodes: Node[], edges: Edge[], rootId: string, center: { x: number; y: number },
+  layerRadius: number = 140, layer: number = 1
 ) {
   const childMap = getChildMap(edges);
   const idToNode: Record<string, Node> = Object.fromEntries(nodes.map((n) => [n.id, n]));
-
   function placeChildren(parentId: string, parentPos: { x: number; y: number }, currLayer: number) {
     const children = childMap[parentId] || [];
     if (!children.length) return;
     const angleInc = (2 * Math.PI) / children.length;
     const radius = layerRadius * currLayer;
-
     children.forEach((childId, idx) => {
-      const angle = idx * angleInc + (Math.random() - 0.5) * 0.2; // jitter
+      const angle = idx * angleInc + (Math.random() - 0.5) * 0.25;
       idToNode[childId].position = {
         x: parentPos.x + radius * Math.cos(angle),
         y: parentPos.y + radius * Math.sin(angle),
@@ -66,7 +55,6 @@ function assignRadialPositions(
       placeChildren(childId, idToNode[childId].position, currLayer + 1);
     });
   }
-
   if (idToNode[rootId]) {
     idToNode[rootId].position = { ...center };
     placeChildren(rootId, center, 1);
@@ -74,7 +62,10 @@ function assignRadialPositions(
   return Object.values(idToNode);
 }
 
-const MindMap: React.FC<MindMapProps> = ({ userQuery, triggerUpdate, resetSignal }) => {
+// -------- Main Component --------
+const MindMap: React.FC<MindMapProps> = ({
+  userQuery, triggerUpdate, automateCount = 3, automateSignal = 0,
+}) => {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const { queryGPT, loading } = useGPT();
@@ -82,23 +73,12 @@ const MindMap: React.FC<MindMapProps> = ({ userQuery, triggerUpdate, resetSignal
   const expandedCache = useRef<Record<string, boolean>>({});
   const mindMapContextRef = useRef<{ nodes: Node[]; edges: Edge[] }>({ nodes: [], edges: [] });
 
-  // --- FULL RESET logic: when resetSignal changes, wipe everything
+  // Initial Mind Map
   useEffect(() => {
-    setNodes([]);
-    setEdges([]);
-    expandedCache.current = {};
-    mindMapContextRef.current = { nodes: [], edges: [] };
-    if (reactFlowInstance) reactFlowInstance.setViewport({ x: 0, y: 0, zoom: 1 });
-  }, [resetSignal]); // runs only on reset
-
-  // ...[rest of your normal useEffect for triggerUpdate/userQuery, and onNodeClick as before]...
-
-  // --- Main Query or Trigger ---
-  useEffect(() => {
-    if (!userQuery) return;
-    expandedCache.current = {};
-    mindMapContextRef.current = { nodes: [], edges: [] };
     const updateMindMap = async () => {
+      if (!userQuery) return;
+      expandedCache.current = {};
+      mindMapContextRef.current = { nodes: [], edges: [] };
       const gptData = await queryGPT(userQuery, mindMapContextRef.current, null);
       if (gptData && gptData.nodes && gptData.edges) {
         const { nodes: baseNodes, edges: baseEdges } = transformGPTToFlow(gptData);
@@ -118,12 +98,11 @@ const MindMap: React.FC<MindMapProps> = ({ userQuery, triggerUpdate, resetSignal
     // eslint-disable-next-line
   }, [triggerUpdate, userQuery, reactFlowInstance]);
 
-  // --- Node expansion ---
+  // Node click expand
   const onNodeClick = useCallback(
     async (_event, node) => {
-      if (expandedCache.current[node.id]) return;
+      if (expandedCache.current[node.id]) return; // Only expand once
       expandedCache.current[node.id] = true;
-
       mindMapContextRef.current = { nodes, edges };
       const gptData = await queryGPT(node.data.label || node.id, mindMapContextRef.current, node.id);
       if (gptData && gptData.nodes && gptData.edges) {
@@ -143,6 +122,57 @@ const MindMap: React.FC<MindMapProps> = ({ userQuery, triggerUpdate, resetSignal
     },
     [nodes, edges, queryGPT, reactFlowInstance]
   );
+
+  // -------- AUTOMATION LOGIC --------
+  useEffect(() => {
+    if (!automateSignal || nodes.length === 0) return;
+
+    let cancelled = false;
+    const expandRandomNodes = async () => {
+      let localExpanded = { ...expandedCache.current };
+      let localNodes = [...nodes], localEdges = [...edges];
+
+      // Get all *expandable* nodes (not already expanded)
+      let expandable = () => localNodes.filter(
+        n => !localExpanded[n.id]
+      );
+      let count = Math.min(automateCount, expandable().length);
+
+      for (let i = 0; i < count; ++i) {
+        let candidates = expandable();
+        if (candidates.length === 0 || cancelled) break;
+        let picked = candidates[Math.floor(Math.random() * candidates.length)];
+        localExpanded[picked.id] = true;
+        // Expand
+        mindMapContextRef.current = { nodes: localNodes, edges: localEdges };
+        const gptData = await queryGPT(
+          picked.data.label || picked.id,
+          mindMapContextRef.current,
+          picked.id
+        );
+        if (gptData && gptData.nodes && gptData.edges) {
+          const { nodes: newNodes, edges: newEdges } = transformGPTToFlow(gptData);
+          const merged = mergeExpandedNodesAndEdges(localNodes, localEdges, newNodes, newEdges, picked.id);
+          const mainNodeId = merged.nodes[0]?.id || "main";
+          const positionedNodes = assignRadialPositions(
+            merged.nodes, merged.edges, mainNodeId, { x: centerX, y: centerY }, layerRadius
+          );
+          localNodes = positionedNodes;
+          localEdges = merged.edges;
+          setNodes(positionedNodes);
+          setEdges(merged.edges);
+          mindMapContextRef.current = { nodes: positionedNodes, edges: merged.edges };
+          if (reactFlowInstance) {
+            setTimeout(() => reactFlowInstance.fitView(fitViewOptions), 100);
+          }
+        }
+        await new Promise(res => setTimeout(res, 350)); // Optional delay
+      }
+    };
+    expandRandomNodes();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line
+  }, [automateSignal]);
 
   const onConnect = useCallback(
     (params: Edge | Connection) => setEdges((eds) => addEdge(params, eds)),

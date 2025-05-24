@@ -5,28 +5,27 @@ import NodePanel from "./components/NodePanel.tsx";
 const App: React.FC = () => {
   const [userQuery, setUserQuery] = useState("");
   const [triggerUpdate, setTriggerUpdate] = useState(0);
-  const [hasQueried, setHasQueried] = useState(false);
-  const [resetSignal, setResetSignal] = useState(0); // To force a MindMap reset
+  const [automateCount, setAutomateCount] = useState(3);
+  const [automateSignal, setAutomateSignal] = useState(0);
 
   // Called when user submits a query
   const onSubmitQuery = (e: React.FormEvent) => {
     e.preventDefault();
-    if (userQuery.trim()) {
-      setHasQueried(true);
-      setTriggerUpdate((n) => n + 1);
-    }
+    setTriggerUpdate((n) => n + 1);
   };
 
-  // Handle the reset logic
   const onReset = () => {
     setUserQuery("");
-    setHasQueried(false);
-    setResetSignal((n) => n + 1); // This will reset MindMap completely
+    setTriggerUpdate((n) => n + 1); // Forces MindMap to reset
+  };
+
+  const onAutomate = () => {
+    setAutomateSignal((n) => n + 1);
   };
 
   return (
     <div style={{ display: "flex", height: "100vh" }}>
-      <div className="sidebar">
+      <div className="sidebar" style={{ minWidth: 320 }}>
         <h1>AI Mind Map Visualizer</h1>
         <form onSubmit={onSubmitQuery}>
           <input
@@ -35,23 +34,35 @@ const App: React.FC = () => {
             value={userQuery}
             onChange={(e) => setUserQuery(e.target.value)}
             style={{ width: "100%", marginBottom: 8, padding: 8, fontSize: 16 }}
-            disabled={hasQueried}
           />
-          <button type="submit" style={{ width: "100%", padding: 8 }} disabled={hasQueried || !userQuery.trim()}>
-            {hasQueried ? "Reset Mind Map" : "Query AI"}
+          <button type="submit" style={{ width: "100%", padding: 8, marginBottom: 4 }}>
+            Query AI
           </button>
-          {hasQueried && (
-            <button type="button" style={{ width: "100%", padding: 8, marginTop: 4 }} onClick={onReset}>
-              Reset Mind Map
-            </button>
-          )}
         </form>
+        <button onClick={onReset} style={{ width: "100%", padding: 8, marginBottom: 12 }}>
+          Reset Mind Map
+        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+          <input
+            type="number"
+            min={1}
+            max={25}
+            value={automateCount}
+            onChange={e => setAutomateCount(Number(e.target.value))}
+            style={{ width: 56, padding: 6 }}
+          />
+          <button onClick={onAutomate} style={{ flex: 1, padding: 8 }}>
+            Automate
+          </button>
+        </div>
         <NodePanel triggerUpdate={triggerUpdate} />
       </div>
       <MindMap
         userQuery={userQuery}
         triggerUpdate={triggerUpdate}
-        resetSignal={resetSignal} // <-- Pass to MindMap for full reset
+        automateCount={automateCount}
+        automateSignal={automateSignal}
+        key={triggerUpdate} // ensures reset
       />
     </div>
   );
