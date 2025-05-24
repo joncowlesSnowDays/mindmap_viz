@@ -48,50 +48,53 @@ function assignTreePositions(
   startY: number = 40,
   baseGap: number = 70,
   charWidth: number = 8.5,
-  yGap: number = 100
+  yGap: number = 100,
+  maxSiblingGap: number = 170    // Add a maximum allowed xGap for extra control
 ) {
   const childMap = getChildMap(edges);
   const idToNode: Record<string, Node> = Object.fromEntries(nodes.map(n => [n.id, n]));
-  let nextX = startX;
 
-  // Helper: Compute required X gap for a group of siblings based on label lengths
-  function calcSiblingGap(siblingIds: string[]): number {
-    if (siblingIds.length < 2) return baseGap;
-    // Find longest label among these siblings
-    const maxLabelLen = Math.max(
-      ...siblingIds.map(id => (idToNode[id]?.data?.label?.length || 8))
-    );
-    // Add more spacing for longer labels, with some padding
-    return Math.max(baseGap, maxLabelLen * charWidth + 35);
+  // Compute the width required for a label (add padding)
+  function labelWidth(id: string): number {
+    const label = idToNode[id]?.data?.label || '';
+    return Math.max(60, label.length * charWidth + 40); // 40px pad
   }
 
-  function placeSubtree(id: string, depth: number) {
+  // Recursively layout subtree, returning total width occupied
+  function placeSubtree(id: string, depth: number, x: number): number {
     const children = childMap[id] || [];
-    let myX = nextX;
     let myY = startY + depth * yGap;
-
     if (children.length === 0) {
-      // Leaf: assign and increment
-      idToNode[id].position = { x: myX, y: myY };
-      nextX += baseGap;
+      // Leaf: just place and return its width
+      idToNode[id].position = { x, y: myY };
+      return labelWidth(id);
     } else {
-      // Non-leaf: recursively place children, center parent above
-      const siblingGap = calcSiblingGap(children);
-      const start = nextX;
-      children.forEach(childId => {
-        placeSubtree(childId, depth + 1);
-        nextX += siblingGap - baseGap; // adjust spacing between children
-      });
-      const end = nextX - siblingGap; // last increment goes one too far
-      idToNode[id].position = {
-        x: (start + end) / 2,
-        y: myY,
-      };
+      // Calculate width for each child
+      const gaps = children.map(childId => labelWidth(childId));
+      // Sibling gap = max label width in this group (capped)
+      let siblingGap = Math.min(
+        Math.max(baseGap, Math.max(...gaps)),
+        maxSiblingGap
+      );
+      // Compute total width needed for all children (with siblingGap between them)
+      let totalWidth = 0;
+      const childWidths: number[] = [];
+      for (let i = 0; i < children.length; ++i) {
+        const w = placeSubtree(children[i], depth + 1, x + totalWidth);
+        childWidths.push(w);
+        totalWidth += w;
+        if (i !== children.length - 1) totalWidth += siblingGap;
+      }
+      // Center self above the middle of the children
+      const myX = x + totalWidth / 2 - labelWidth(id) / 2;
+      idToNode[id].position = { x: myX, y: myY };
+      return Math.max(labelWidth(id), totalWidth);
     }
   }
 
+  // Start root in center
   if (idToNode[rootId]) {
-    placeSubtree(rootId, 0);
+    placeSubtree(rootId, 0, startX);
   }
   return Object.values(idToNode);
 }
