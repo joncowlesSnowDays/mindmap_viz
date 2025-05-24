@@ -64,25 +64,16 @@ function assignStaggeredTreePositions(
     idToNode[id].position = { x, y };
     if (!children.length) return;
 
-    // Total required width for all children (based on label width + xGap)
+    // Compute total horizontal width for all children
     const totalWidth = children.reduce((sum, c) => sum + labelWidth(c), 0) + xGap * (children.length - 1);
     let left = x - totalWidth / 2 + labelWidth(children[0]) / 2;
 
-    // Center index for fan-out calculation
-    const mid = Math.floor(children.length / 2);
+    // Alternately stagger children up/down: [down, up, down, up,...] from parent y
     children.forEach((childId, i) => {
-      // Fan out children *above and below* the parent
-      let dy = 0;
-      if (children.length % 2 === 1) {
-        // Odd: perfectly center
-        dy = (i - mid) * staggerY;
-      } else {
-        // Even: offset a bit more for the two middle children
-        if (i < mid) dy = (i - mid) * staggerY - staggerY / 2;
-        else dy = (i - mid) * staggerY + staggerY / 2;
-      }
+      const sign = (i % 2 === 0) ? 1 : -1; // Alternate +/-
+      const offset = Math.ceil(i / 2) * staggerY * sign;
       const lx = left + labelWidth(childId) / 2;
-      placeSubtree(childId, depth + 1, lx, y + yGap + dy);
+      placeSubtree(childId, depth + 1, lx, y + yGap + offset);
       left += labelWidth(childId) + xGap;
     });
   }
@@ -92,6 +83,7 @@ function assignStaggeredTreePositions(
   }
   return Object.values(idToNode);
 }
+
 
 
 
