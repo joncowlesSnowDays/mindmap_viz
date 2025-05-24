@@ -19,7 +19,7 @@ Your job is to return an updated set of concepts and relationships in JSON. Only
 ${isFirstTime ? `
 1. The mind map is empty (first time building a new tree):
    - Generate a root node based on the user query.
-   - Generate 3–6 direct children for the root node, each a meaningful subtopic or key aspect.
+   - Generate 3 to 6 direct children for the root node, each a meaningful subtopic or key aspect.
    - All nodes must have unique "id", "label", and belong to a logical "group" if appropriate.
 ` : `
 2. The user has clicked on a node to expand (selected node ID: "${selectedNodeId}"):
@@ -55,6 +55,9 @@ Example Output:
 - Double-check for missing commas, mismatched quotes, or unclosed braces before returning.
 - Use unique, stable IDs (don’t re-use IDs of existing nodes unless updating).
 - Try to maximize visual clarity.
+- Do NOT generate more than 6 direct children for ANY node ever.
+- For initial builds, the total number of nodes must NOT exceed 7 (root + 6 children).
+- If you are running out of space, close all brackets and arrays and stop immediately.
 - **IMPORTANT: If you are running out of output space, close all open brackets/arrays and stop immediately. Try not to exceed 2000 tokens in your output.**
 
 **Current mind map (context):**
