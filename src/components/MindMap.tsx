@@ -25,8 +25,8 @@ interface MindMapProps {
 const fitViewOptions = { padding: 0.18, includeHiddenNodes: true };
 const startX = 400;     // Center X of map
 const startY = 40;      // Top Y of map
-const xGap = 50;       // Horizontal spacing between siblings
-const yGap = 50;       // Vertical spacing between layers
+const xGap = 100;       // Horizontal spacing between siblings
+const yGap = 100;       // Vertical spacing between layers
 
 // --- Helper Functions ---
 function getChildMap(edges: Edge[]) {
@@ -45,7 +45,7 @@ function assignTreePositions(
   rootId: string,
   startX: number = 400,
   startY: number = 40,
-  xGap: number = 180,
+  xGap: number = 100,
   yGap: number = 100
 ) {
   const childMap = getChildMap(edges);
