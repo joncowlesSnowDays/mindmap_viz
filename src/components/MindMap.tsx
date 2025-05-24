@@ -25,7 +25,7 @@ interface MindMapProps {
 const fitViewOptions = { padding: 0.18, includeHiddenNodes: true };
 const centerX = 400;
 const centerY = 300;
-const layerRadius = 140; 
+const layerRadius = 70; 
 
 // Helper functions (as before)
 function getChildMap(edges: Edge[]) {
