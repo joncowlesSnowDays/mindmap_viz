@@ -48,31 +48,39 @@ function assignStaggeredTreePositions(
   startY: number = 40,
   xGap: number = 110,
   yGap: number = 120,
-  staggerY: number = 28 // Amount to stagger vertically per child index
+  staggerY: number = 36 // how much to fan out vertically per child index
 ) {
   const childMap = getChildMap(edges);
   const idToNode: Record<string, Node> = Object.fromEntries(nodes.map(n => [n.id, n]));
 
   function labelWidth(id: string): number {
     const label = idToNode[id]?.data?.label || '';
-    return Math.max(80, label.length * 7 + 32); // fudge for padding/font size
+    return Math.max(80, label.length * 7 + 32);
   }
 
   function placeSubtree(id: string, depth: number, x: number, y: number) {
     const children = childMap[id] || [];
+    const myWidth = labelWidth(id);
     idToNode[id].position = { x, y };
     if (!children.length) return;
 
-    // Stagger children vertically (fan out from center)
+    // Total required width for all children (based on label width + xGap)
     const totalWidth = children.reduce((sum, c) => sum + labelWidth(c), 0) + xGap * (children.length - 1);
     let left = x - totalWidth / 2 + labelWidth(children[0]) / 2;
 
+    // Center index for fan-out calculation
     const mid = Math.floor(children.length / 2);
     children.forEach((childId, i) => {
-      // Vertically stagger relative to center child
-      let dy = (i - mid) * staggerY;
-      // For even, nudge the two center-most up/down slightly to avoid overlap
-      if (children.length % 2 === 0 && (i === mid - 1 || i === mid)) dy += (i === mid ? staggerY / 2 : -staggerY / 2);
+      // Fan out children *above and below* the parent
+      let dy = 0;
+      if (children.length % 2 === 1) {
+        // Odd: perfectly center
+        dy = (i - mid) * staggerY;
+      } else {
+        // Even: offset a bit more for the two middle children
+        if (i < mid) dy = (i - mid) * staggerY - staggerY / 2;
+        else dy = (i - mid) * staggerY + staggerY / 2;
+      }
       const lx = left + labelWidth(childId) / 2;
       placeSubtree(childId, depth + 1, lx, y + yGap + dy);
       left += labelWidth(childId) + xGap;
@@ -84,6 +92,7 @@ function assignStaggeredTreePositions(
   }
   return Object.values(idToNode);
 }
+
 
 
 // -------- Main Component --------
