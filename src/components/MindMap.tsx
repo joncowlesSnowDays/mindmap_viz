@@ -68,7 +68,7 @@ function assignRadialPositions(
 }
 
 // --- Avoid Node Overlap (simple post-processing) ---
-function avoidNodeOverlap(nodes: Node[], minDist = 90, maxIters = 12) {
+function avoidNodeOverlap(nodes: Node[], minDist = 150, maxIters = 12) {
   let updatedNodes = nodes.map(n => ({ ...n, position: { ...n.position } }));
 
   for (let iter = 0; iter < maxIters; ++iter) {
