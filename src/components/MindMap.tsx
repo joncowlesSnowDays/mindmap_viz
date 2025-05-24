@@ -45,7 +45,7 @@ function assignRadialPositions(
   edges: Edge[],
   rootId: string,
   center: { x: number; y: number },
-  layerRadius: number = 180,
+  layerRadius: number = 80, // smaller spacing!
   angleStart: number = 0,
   angleEnd: number = 2 * Math.PI,
   layer: number = 1,
@@ -66,9 +66,8 @@ function assignRadialPositions(
     const children = childMap[id] || [];
     const angleSpan = aEnd - aStart;
     children.forEach((childId, idx) => {
-      // Add randomness/jitter to positions
       const angle = aStart + (angleSpan * (idx + 1)) / (children.length + 1);
-      const jitter = (Math.random() - 0.5) * 40; // +/-20px
+      const jitter = (Math.random() - 0.5) * 16; // +/-8px
       idToNode[childId].position = {
         x: center.x + (radius * layer + jitter) * Math.cos(angle),
         y: center.y + (radius * layer + jitter) * Math.sin(angle),
@@ -91,6 +90,7 @@ function assignRadialPositions(
   }
   return Object.values(idToNode);
 }
+
 
 // --------------------
 

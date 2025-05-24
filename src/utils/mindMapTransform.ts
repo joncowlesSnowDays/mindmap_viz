@@ -1,23 +1,34 @@
 import { Node, Edge } from "reactflow";
 
-/*
- Expected GPT output:
- {
-   nodes: [
-     { id: "concept-1", label: "Thrusters", group: "Propulsion", type: "concept", preview: false, collapsed: false, ... },
-     ...
-   ],
-   edges: [
-     { id: "edge-1", source: "concept-1", target: "concept-2", type: "informs" },
-     ...
-   ]
- }
-*/
-export function transformGPTToFlow(gptData: any, prevNodes: Node[], prevEdges: Edge[]): { nodes: Node[]; edges: Edge[] } {
+// Merge logic: Merge only new nodes/edges, keep all old ones
+export function mergeNodesEdges(
+  prevNodes: Node[],
+  prevEdges: Edge[],
+  newNodes: Node[],
+  newEdges: Edge[]
+): { nodes: Node[], edges: Edge[] } {
+  // Merge nodes by ID, don't overwrite old ones (keep old style/preview state)
+  const nodeMap = Object.fromEntries(prevNodes.map(n => [n.id, n]));
+  for (const n of newNodes) {
+    if (!nodeMap[n.id]) nodeMap[n.id] = n;
+  }
+  // Merge edges by ID, skip duplicates
+  const edgeMap = Object.fromEntries(prevEdges.map(e => [e.id, e]));
+  for (const e of newEdges) {
+    if (!edgeMap[e.id]) edgeMap[e.id] = e;
+  }
+  return { nodes: Object.values(nodeMap), edges: Object.values(edgeMap) };
+}
+
+export function transformGPTToFlow(
+  gptData: any,
+  prevNodes: Node[],
+  prevEdges: Edge[]
+): { nodes: Node[]; edges: Edge[] } {
   if (!gptData || !gptData.nodes) return { nodes: [], edges: [] };
 
-  // Map node data to React Flow node format
-  const nodes: Node[] = gptData.nodes.map((n: any) => ({
+  // Map new GPT nodes
+  const newNodes: Node[] = gptData.nodes.map((n: any) => ({
     id: n.id,
     type: n.preview ? "input" : "default",
     data: {
@@ -36,8 +47,8 @@ export function transformGPTToFlow(gptData: any, prevNodes: Node[], prevEdges: E
     },
   }));
 
-  // Map edges and apply color/type
-  const edges: Edge[] = gptData.edges.map((e: any) => ({
+  // Map new GPT edges
+  const newEdges: Edge[] = gptData.edges.map((e: any) => ({
     id: e.id,
     source: e.source,
     target: e.target,
@@ -53,5 +64,6 @@ export function transformGPTToFlow(gptData: any, prevNodes: Node[], prevEdges: E
     animated: !!e.preview,
   }));
 
-  return { nodes, edges };
+  // Merge new with old
+  return mergeNodesEdges(prevNodes, prevEdges, newNodes, newEdges);
 }
