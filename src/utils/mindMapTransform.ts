@@ -1,7 +1,8 @@
 import { Node, Edge, MarkerType } from "reactflow";
 
 /**
- * Merge newly expanded nodes/edges with the previous tree, replacing only the children of expandedNodeId.
+ * Merge newly expanded nodes/edges with the previous tree,
+ * replacing only the children of expandedNodeId.
  */
 export function mergeExpandedNodesAndEdges(
   prevNodes: Node[],
@@ -30,15 +31,16 @@ export function mergeExpandedNodesAndEdges(
   };
 }
 
-// --- Utility for random colors ---
+// --- Utility for random pastel edge colors ---
 function randomColor() {
-  // Pastel random color
   const h = Math.floor(Math.random() * 360);
   return `hsl(${h}, 75%, 75%)`;
 }
 
 /*
  * Transforms GPT data to React Flow nodes and edges, with preview node style and arrow markers.
+ * - Edges get a random pastel color and arrow
+ * - No edge label for cleaner appearance
  */
 export function transformGPTToFlow(gptData: any): { nodes: Node[]; edges: Edge[] } {
   if (!gptData || !gptData.nodes) return { nodes: [], edges: [] };
@@ -60,6 +62,7 @@ export function transformGPTToFlow(gptData: any): { nodes: Node[]; edges: Edge[]
       border: "1px solid #e5e7eb",
       opacity: n.preview ? 0.75 : 1,
       background: n.preview ? "#f9f5ff" : "#fff",
+      cursor: "pointer",
     },
   }));
 
@@ -68,7 +71,7 @@ export function transformGPTToFlow(gptData: any): { nodes: Node[]; edges: Edge[]
     id: e.id,
     source: e.source,
     target: e.target,
-    // label: e.type, // REMOVE LABEL
+    // label: e.type, // No label for edge
     style: {
       stroke: randomColor(),
       strokeWidth: 2,
