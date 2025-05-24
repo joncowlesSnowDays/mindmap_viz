@@ -23,11 +23,11 @@ interface MindMapProps {
 }
 
 const fitViewOptions = { padding: 0.18, includeHiddenNodes: true };
-const startX = 400;     // Center X of map
-const startY = 40;      // Top Y of map
-const baseGap = 70;     // Minimum horizontal spacing between siblings
-const charWidth = 8.5;  // Estimated width per label character (in px)
-const yGap = 100;       // Vertical spacing between layers
+const startX = 400;    // Center X of map
+const startY = 40;     // Top Y of map
+const xGap = 110;      // Horizontal gap between siblings (min)
+const yGap = 120;      // Vertical gap between layers
+const staggerY = 28;   // Vertical stagger within sibling group
 
 // --- Helper Functions ---
 function getChildMap(edges: Edge[]) {
@@ -39,68 +39,44 @@ function getChildMap(edges: Edge[]) {
   return childMap;
 }
 
-// --- Dynamically Adjusted Tree Layout ---
-function assignTreePositions(
+// --- Staggered Tree Layout ---
+function assignStaggeredTreePositions(
   nodes: Node[],
   edges: Edge[],
   rootId: string,
   startX: number = 400,
   startY: number = 40,
-  baseGap: number = 60,
-  charWidth: number = 8.5,
-  yGap: number = 100,
-  maxSiblingGap: number = 120,
-  wrapAt: number = 5           // How many siblings per row before wrapping
+  xGap: number = 110,
+  yGap: number = 120,
+  staggerY: number = 28 // Amount to stagger vertically per child index
 ) {
   const childMap = getChildMap(edges);
   const idToNode: Record<string, Node> = Object.fromEntries(nodes.map(n => [n.id, n]));
 
   function labelWidth(id: string): number {
     const label = idToNode[id]?.data?.label || '';
-    return Math.max(60, label.length * charWidth + 40); // 40px pad
+    return Math.max(80, label.length * 7 + 32); // fudge for padding/font size
   }
 
-  function placeSubtree(id: string, depth: number, x: number, y: number): { width: number; height: number } {
+  function placeSubtree(id: string, depth: number, x: number, y: number) {
     const children = childMap[id] || [];
-    if (!children.length) {
-      idToNode[id].position = { x, y };
-      return { width: labelWidth(id), height: yGap };
-    } else {
-      // Split children into rows of wrapAt
-      const rows: string[][] = [];
-      for (let i = 0; i < children.length; i += wrapAt) {
-        rows.push(children.slice(i, i + wrapAt));
-      }
+    idToNode[id].position = { x, y };
+    if (!children.length) return;
 
-      let totalHeight = 0, totalWidth = 0;
-      let rowPositions: { x: number; y: number }[] = [];
-      let currY = y + yGap;
+    // Stagger children vertically (fan out from center)
+    const totalWidth = children.reduce((sum, c) => sum + labelWidth(c), 0) + xGap * (children.length - 1);
+    let left = x - totalWidth / 2 + labelWidth(children[0]) / 2;
 
-      rows.forEach(row => {
-        let rowWidth = 0;
-        row.forEach((childId, i) => {
-          rowWidth += labelWidth(childId);
-          if (i !== row.length - 1) rowWidth += baseGap;
-        });
-
-        let rowX = x - rowWidth / 2;
-        let maxHeight = 0;
-
-        row.forEach(childId => {
-          const childW = labelWidth(childId);
-          const { width: childWidth, height: childHeight } = placeSubtree(childId, depth + 1, rowX + childW / 2, currY);
-          rowX += childW + baseGap;
-          maxHeight = Math.max(maxHeight, childHeight);
-        });
-
-        currY += maxHeight;
-        totalHeight += maxHeight;
-        totalWidth = Math.max(totalWidth, rowWidth);
-      });
-
-      idToNode[id].position = { x, y };
-      return { width: Math.max(labelWidth(id), totalWidth), height: totalHeight + yGap };
-    }
+    const mid = Math.floor(children.length / 2);
+    children.forEach((childId, i) => {
+      // Vertically stagger relative to center child
+      let dy = (i - mid) * staggerY;
+      // For even, nudge the two center-most up/down slightly to avoid overlap
+      if (children.length % 2 === 0 && (i === mid - 1 || i === mid)) dy += (i === mid ? staggerY / 2 : -staggerY / 2);
+      const lx = left + labelWidth(childId) / 2;
+      placeSubtree(childId, depth + 1, lx, y + yGap + dy);
+      left += labelWidth(childId) + xGap;
+    });
   }
 
   if (idToNode[rootId]) {
@@ -131,8 +107,8 @@ const MindMap: React.FC<MindMapProps> = ({
       if (gptData && gptData.nodes && gptData.edges) {
         const { nodes: baseNodes, edges: baseEdges } = transformGPTToFlow(gptData);
         const mainNodeId = baseNodes[0]?.id || "main";
-        let positionedNodes = assignTreePositions(
-          baseNodes, baseEdges, mainNodeId, startX, startY, baseGap, charWidth, yGap
+        let positionedNodes = assignStaggeredTreePositions(
+          baseNodes, baseEdges, mainNodeId, startX, startY, xGap, yGap, staggerY
         );
         setNodes(positionedNodes);
         setEdges(baseEdges);
@@ -157,8 +133,8 @@ const MindMap: React.FC<MindMapProps> = ({
         const { nodes: newNodes, edges: newEdges } = transformGPTToFlow(gptData);
         const merged = mergeExpandedNodesAndEdges(nodes, edges, newNodes, newEdges, node.id);
         const mainNodeId = nodes[0]?.id || "main";
-        let positionedNodes = assignTreePositions(
-          merged.nodes, merged.edges, mainNodeId, startX, startY, baseGap, charWidth, yGap
+        let positionedNodes = assignStaggeredTreePositions(
+          merged.nodes, merged.edges, mainNodeId, startX, startY, xGap, yGap, staggerY
         );
         setNodes(positionedNodes);
         setEdges(merged.edges);
@@ -197,8 +173,8 @@ const MindMap: React.FC<MindMapProps> = ({
           const { nodes: newNodes, edges: newEdges } = transformGPTToFlow(gptData);
           const merged = mergeExpandedNodesAndEdges(localNodes, localEdges, newNodes, newEdges, picked.id);
           const mainNodeId = merged.nodes[0]?.id || "main";
-          let positionedNodes = assignTreePositions(
-            merged.nodes, merged.edges, mainNodeId, startX, startY, baseGap, charWidth, yGap
+          let positionedNodes = assignStaggeredTreePositions(
+            merged.nodes, merged.edges, mainNodeId, startX, startY, xGap, yGap, staggerY
           );
           localNodes = positionedNodes;
           localEdges = merged.edges;
