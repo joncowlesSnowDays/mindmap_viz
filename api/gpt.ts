@@ -28,8 +28,8 @@ Example Output:
 **Your Task:**
 - Find the node that best matches the user's query or is selected for expansion.
 - For that node:
-  - Generate 4-8 direct children (Layer 1), each a meaningful subtopic or key aspect.
-  - For each child, generate 2-4 children of their own (Layer 2), as sub-aspects, examples, or further breakdowns.
+  - Generate 4-6 direct children (Layer 1), each a meaningful subtopic or key aspect.
+  - For each child, generate 2-3 children of their own (Layer 2), as sub-aspects, examples, or further breakdowns.
 - If any of these should be "preview" nodes (for future expansion), set "preview": true.
 - Make sure all nodes have unique "id", "label", and belong to a logical "group" if appropriate.
 
@@ -47,6 +47,7 @@ Example Output:
 - Double-check for missing commas, mismatched quotes, or unclosed braces before returning.
 - Use unique, stable IDs (don’t re-use IDs of existing nodes unless updating).
 - Try to maximize visual clarity.
+- **IMPORTANT: If you are running out of output space, close all open brackets/arrays and stop immediately. Try not to exceed 2000 tokens in your output.**
 
 **Current mind map (context):**
 ${JSON.stringify(mindMapContext)}
@@ -57,9 +58,7 @@ Return only the updated mind map JSON.
   `;
 }
 
-
-
-export default async function handler(req, res) {
+export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { userQuery, mindMapContext } = req.body;
   const prompt = buildPrompt(userQuery, mindMapContext);
 
@@ -82,18 +81,35 @@ export default async function handler(req, res) {
       temperature: 0.3
     });
 
-    // --- Log the raw GPT content ---
-    const content = completion.choices[0]?.message?.content;
+    const choice = completion.choices[0];
+    const content = choice?.message?.content;
+    const finishReason = choice?.finish_reason;
+
     console.log("Raw GPT response:", content);
+    console.log("Finish reason:", finishReason);
 
     let json = null;
     try {
       json = typeof content === "string" ? JSON.parse(content) : content;
     } catch (e) {
-      // Enhanced error logging with the problematic content and error details
       console.error("JSON parse error:", e);
-      console.error("Problematic GPT response:", content);
-      return res.status(200).json({ nodes: [], edges: [], error: "LLM output parse error", details: e.message, gpt_response: content });
+      // Detect if the model was truncated
+      if (finishReason === "length") {
+        return res.status(200).json({
+          nodes: [],
+          edges: [],
+          error: "LLM output was truncated (finish_reason: 'length'). Try reducing the scope or number of nodes.",
+          details: e.message,
+          gpt_response: content
+        });
+      }
+      return res.status(200).json({
+        nodes: [],
+        edges: [],
+        error: "LLM output parse error",
+        details: e.message,
+        gpt_response: content
+      });
     }
     res.status(200).json(json);
   } catch (err) {
@@ -101,4 +117,3 @@ export default async function handler(req, res) {
     res.status(500).json({ error: "OpenAI API error", details: err?.message });
   }
 }
-
