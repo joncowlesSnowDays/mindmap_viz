@@ -14,7 +14,7 @@ import ReactFlow, {
 import "reactflow/dist/style.css";
 import { useGPT } from "../hooks/useGPT";
 import { transformGPTToFlow, mergeExpandedNodesAndEdges } from "../utils/mindMapTransform";
-import Legend from "./Legend";
+import Legend from "./Legend.tsx";
 
 interface MindMapProps {
   userQuery: string;
