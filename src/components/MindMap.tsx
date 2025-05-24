@@ -46,9 +46,9 @@ function assignStaggeredTreePositions(
   rootId: string,
   startX: number = 400,
   startY: number = 40,
-  xGap: number = 110,
+  xGap: number = 80,
   yGap: number = 120,
-  staggerY: number = 36 // how much to fan out vertically per child index
+  staggerY: number = 26 // how much to fan out vertically per child index
 ) {
   const childMap = getChildMap(edges);
   const idToNode: Record<string, Node> = Object.fromEntries(nodes.map(n => [n.id, n]));
