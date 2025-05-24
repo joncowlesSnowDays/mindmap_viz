@@ -25,7 +25,7 @@ interface MindMapProps {
 const fitViewOptions = { padding: 0.18, includeHiddenNodes: true };
 const startX = 400;     // Center X of map
 const startY = 40;      // Top Y of map
-const xGap = 45;        // Minimum horizontal spacing between siblings (tune!)
+const xGap = 20;        // Minimum horizontal spacing between siblings (tune!)
 const yGap = 110;       // Vertical spacing between layers (tune!)
 const staggerY = 32;    // How much to stagger children up/down
 const minNodePadding = 20; // px, padding per side for bounding box estimation
