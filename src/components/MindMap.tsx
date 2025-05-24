@@ -117,15 +117,35 @@ const MindMap: React.FC<MindMapProps> = ({ userQuery, triggerUpdate }) => {
       console.log("GPT DATA (click):", gptData);
 
       if (gptData && gptData.nodes && gptData.edges) {
-        let { nodes: newNodes, edges: newEdges } = transformGPTToFlow(gptData, nodes, edges);
-        const mainNodeId = newNodes[0]?.id || "main";
-        newNodes = assignRadialPositions(newNodes, newEdges, mainNodeId, { x: centerX, y: centerY });
+        // Merge logic: Only add new nodes/edges
+        const { nodes: newNodes, edges: newEdges } = transformGPTToFlow(gptData, nodes, edges);
 
-        console.log("TRANSFORMED NODES (click):", newNodes);
-        console.log("TRANSFORMED EDGES (click):", newEdges);
+        // Merge nodes by unique id
+        const existingNodeIds = new Set(nodes.map(n => n.id));
+        const mergedNodes = [
+          ...nodes,
+          ...newNodes.filter(n => !existingNodeIds.has(n.id)),
+        ];
 
-        setNodes(newNodes);
-        setEdges(newEdges);
+        // Merge edges by unique id
+        const existingEdgeIds = new Set(edges.map(e => e.id));
+        const mergedEdges = [
+          ...edges,
+          ...newEdges.filter(e => !existingEdgeIds.has(e.id)),
+        ];
+
+        // Optional: re-run layout, or just update positions for new nodes if you want
+        // Here, relayout everything:
+        const mainNodeId = mergedNodes[0]?.id || "main";
+        const relayoutNodes = assignRadialPositions(
+          mergedNodes,
+          mergedEdges,
+          mainNodeId,
+          { x: centerX, y: centerY }
+        );
+
+        setNodes(relayoutNodes);
+        setEdges(mergedEdges);
 
         // FIT VIEW after update
         if (reactFlowInstance) {
@@ -161,9 +181,6 @@ const MindMap: React.FC<MindMapProps> = ({ userQuery, triggerUpdate }) => {
         let { nodes: newNodes, edges: newEdges } = transformGPTToFlow(gptData, nodes, edges);
         const mainNodeId = newNodes[0]?.id || "main";
         newNodes = assignRadialPositions(newNodes, newEdges, mainNodeId, { x: centerX, y: centerY });
-
-        console.log("TRANSFORMED NODES (query):", newNodes);
-        console.log("TRANSFORMED EDGES (query):", newEdges);
 
         setNodes(newNodes);
         setEdges(newEdges);

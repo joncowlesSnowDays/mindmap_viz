@@ -4,10 +4,9 @@ import OpenAI from "openai";
 // Secure OpenAI key from env
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
-// Build GPT prompt for either full map or partial expansion
 function buildPrompt(userQuery: string, mindMapContext: any, selectedNodeId?: string | null) {
   if (!selectedNodeId) {
-    // Build a NEW mind map for a fresh query
+    // NEW mind map creation
     return `
 You are an AI mind map builder.
 Build a new knowledge map for the topic: "${userQuery}".
@@ -21,18 +20,16 @@ Build a new knowledge map for the topic: "${userQuery}".
   "nodes": [
     { "id": "root", "label": "Main Topic", "group": "Group A", "type": "concept", "preview": false, "collapsed": false },
     { "id": "child1", "label": "Subtopic 1", "group": "Group A", "type": "concept", "preview": true, "collapsed": false }
-    // ...
   ],
   "edges": [
     { "id": "e-root-child1", "source": "root", "target": "child1", "type": "informs" }
-    // ...
   ]
 }
 Do NOT return grandchildren (only one layer of children).
 Do NOT include extra text, comments, or explanations. Only valid JSON.
     `.trim();
   } else {
-    // Partial expansion: expand only the selected node
+    // PARTIAL EXPANSION: ONLY the selected node gets new children.
     return `
 You are an AI mind map builder.
 Expand ONLY the selected node with id "${selectedNodeId}" from the mind map below:
@@ -40,9 +37,9 @@ Expand ONLY the selected node with id "${selectedNodeId}" from the mind map belo
 ${JSON.stringify(mindMapContext, null, 2)}
 
 - Generate 3-6 new direct children (meaningful subtopics or key aspects) for the selected node.
+- Only output NEW nodes and NEW edges; DO NOT include any nodes or edges that already exist in the mind map context.
+- All IDs must be unique and must not conflict with existing IDs in the context.
 - For each new child node, set "preview": true if you want it to be expandable by the user later.
-- Output ONLY the new nodes and edges you create, NOT the entire mind map.
-- All IDs must be unique and not conflict with those already present in the context.
 - Output valid JSON using this structure:
 
 {
@@ -55,7 +52,7 @@ ${JSON.stringify(mindMapContext, null, 2)}
     { "id": "e-selectedNodeId-new_id_1", "source": "${selectedNodeId}", "target": "new_id_1", "type": "informs" }
   ]
 }
-Do NOT return the full map, only new nodes and new edges.
+**IMPORTANT: Do NOT return the full map—only new nodes and new edges that do not duplicate any from the context.**
 Do NOT include comments or extra text—only valid JSON.
 If you generate no new nodes, return empty arrays for nodes and edges.
     `.trim();
