@@ -37,26 +37,24 @@ export function transformGPTToFlow(gptData: any): { nodes: Node[]; edges: Edge[]
   if (!gptData || !gptData.nodes) return { nodes: [], edges: [] };
 
   // Map node data to React Flow node format
-// Map node data to React Flow node format
-const nodes: Node[] = gptData.nodes.map((n: any) => ({
-  id: n.id,
-  type: n.preview ? "input" : "default",
-  data: {
-    label: n.label,
-    group: n.group,
-    preview: !!n.preview,
-    collapsed: !!n.collapsed,
-    ...n,
-  },
-  position: n.position || { x: Math.random() * 400, y: Math.random() * 300 },
-  parentNode: n.parentId || undefined,
-  style: {
-    border: "1px solid #e5e7eb",            // Always solid border
-    // Optionally: border: n.preview ? "1px solid #c026d3" : "1px solid #e5e7eb",
-    opacity: n.preview ? 0.75 : 1,
-    background: n.preview ? "#f9f5ff" : "#fff", // Slight color for previews (optional)
-  },
-}));
+  const nodes: Node[] = gptData.nodes.map((n: any) => ({
+    id: n.id,
+    type: "default", // Always use "default" for compatibility
+    data: {
+      label: n.label,
+      group: n.group,
+      preview: !!n.preview,
+      collapsed: !!n.collapsed,
+      ...n,
+    },
+    position: n.position || { x: Math.random() * 400, y: Math.random() * 300 },
+    parentNode: n.parentId || undefined,
+    style: {
+      border: "1px solid #e5e7eb",
+      opacity: n.preview ? 0.75 : 1,
+      background: n.preview ? "#f9f5ff" : "#fff",
+    },
+  }));
 
   // Map edges, style with color, and add arrows
   const edges: Edge[] = gptData.edges.map((e: any) => ({
@@ -71,7 +69,7 @@ const nodes: Node[] = gptData.nodes.map((n: any) => ({
         : "#444",
       strokeWidth: 2,
     },
-    markerEnd: { type: MarkerType.ArrowClosed }, // <-- show arrows!
+    markerEnd: { type: MarkerType.ArrowClosed },
     animated: !!e.preview,
     type: "default"
   }));
