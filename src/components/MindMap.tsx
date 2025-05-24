@@ -46,8 +46,8 @@ function assignStaggeredTreePositions(
   rootId: string,
   startX: number = 400,
   startY: number = 40,
-  xGap: number = 60,
-  yGap: number = 120,
+  xGap: number = 70,
+  yGap: number = 100,
   staggerY: number = 26
 ) {
   const childMap = getChildMap(edges);
@@ -63,16 +63,29 @@ function assignStaggeredTreePositions(
     idToNode[id].position = { x, y };
     if (!children.length) return;
 
+    // Compute total width, horizontally center
     const totalWidth = children.reduce((sum, c) => sum + labelWidth(c), 0) + xGap * (children.length - 1);
     let left = x - totalWidth / 2 + labelWidth(children[0]) / 2;
+
+    // Stagger children up/down, centered at y + yGap
     const n = children.length;
-    const centerIdx = (n - 1) / 2;
+    const centerY = y + yGap;
+    const mid = Math.floor(n / 2);
 
     children.forEach((childId, i) => {
-      // Fan out vertically above and below the parent, but all at y + yGap
-      const offset = (i - centerIdx) * staggerY;
-      const lx = left + labelWidth(childId) / 2;
-      placeSubtree(childId, depth + 1, lx, y + yGap + offset);
+      // Alternate up/down from center
+      let verticalOffset;
+      if (n % 2 === 1) {
+        // Odd number: middle at center, then up, down, up, down, etc.
+        verticalOffset = (i - mid) * staggerY;
+      } else {
+        // Even: e.g. 4 children → offsets: -1.5, -0.5, +0.5, +1.5
+        verticalOffset = (i - (n - 1) / 2) * staggerY;
+      }
+
+      const childX = left + labelWidth(childId) / 2;
+      const childY = centerY + verticalOffset;
+      placeSubtree(childId, depth + 1, childX, childY);
       left += labelWidth(childId) + xGap;
     });
   }
@@ -82,8 +95,6 @@ function assignStaggeredTreePositions(
   }
   return Object.values(idToNode);
 }
-
-
 
 
 
