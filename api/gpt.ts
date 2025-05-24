@@ -4,11 +4,29 @@ import OpenAI from "openai";
 // Secure OpenAI key from env
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
-// Compose a prompt for GPT, including current map context
-function buildPrompt(userQuery: string, mindMapContext: any) {
+// Compose a prompt for GPT, including current map context and selected node
+function buildPrompt(userQuery: string, mindMapContext: any, selectedNodeId?: string) {
+  // Detect if it's the first time (empty map)
+  const isFirstTime =
+    !mindMapContext ||
+    !Array.isArray(mindMapContext.nodes) ||
+    mindMapContext.nodes.length === 0;
+
   return `
 You are an AI knowledge map builder. The user will ask a question and provide the current mind map (nodes, edges, groups).
-Your job is to return an updated set of concepts and relationships in JSON, expanding the selected topic with **one new layer** of children.
+Your job is to return an updated set of concepts and relationships in JSON. Only do one of the following:
+
+${isFirstTime ? `
+1. The mind map is empty (first time building a new tree):
+   - Generate a root node based on the user query.
+   - Generate 3–6 direct children for the root node, each a meaningful subtopic or key aspect.
+   - All nodes must have unique "id", "label", and belong to a logical "group" if appropriate.
+` : `
+2. The user has clicked on a node to expand (selected node ID: "${selectedNodeId}"):
+   - Expand ONLY the selected node by generating 3–6 direct children for it (no grandchildren).
+   - Do not modify or create new root nodes. Do not expand any node except the selected node.
+   - All new nodes must have unique "id", "label", and belong to a logical "group" if appropriate.
+`}
 
 Output must be valid, parseable JSON that matches the shape below:
 
@@ -25,13 +43,6 @@ Example Output:
   ]
 }
 
-**Your Task:**
-- Find the single node that best matches the user's query or is selected for expansion.
-- For that node:
-  - Generate 3-6 direct children (not grandchildren), each a meaningful subtopic or key aspect.
-- If any of these should be "preview" nodes (for future expansion), set "preview": true.
-- Make sure all nodes have unique "id", "label", and belong to a logical "group" if appropriate.
-
 **Node and Edge Structure:**
 - "group" clusters related concepts visually.
 - "type" in edges is one of: "informs", "depends on", "related".
@@ -40,7 +51,6 @@ Example Output:
 - Place new nodes in clear, logical relationships, minimizing clutter.
 
 **Rules:**
-- Expand only the node relevant to the user query by **one layer** (direct children only).
 - Do not include comments or extra text—only valid JSON.
 - Double-check for missing commas, mismatched quotes, or unclosed braces before returning.
 - Use unique, stable IDs (don’t re-use IDs of existing nodes unless updating).
@@ -50,21 +60,23 @@ Example Output:
 **Current mind map (context):**
 ${JSON.stringify(mindMapContext)}
 
+${selectedNodeId && !isFirstTime ? `**Selected node for expansion:** "${selectedNodeId}"` : ''}
+
 **User query:** "${userQuery}"
 
 Return only the updated mind map JSON.
   `;
-
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const { userQuery, mindMapContext } = req.body;
-  const prompt = buildPrompt(userQuery, mindMapContext);
+  const { userQuery, mindMapContext, selectedNodeId } = req.body;
+  const prompt = buildPrompt(userQuery, mindMapContext, selectedNodeId);
 
   // --- Debug logs start ---
   console.log("API key:", process.env.OPENAI_API_KEY ? "present" : "missing");
   console.log("userQuery:", userQuery);
   console.log("mindMapContext:", mindMapContext);
+  console.log("selectedNodeId:", selectedNodeId);
   console.log("Prompt sent to OpenAI:", prompt);
   // --- Debug logs end ---
 
