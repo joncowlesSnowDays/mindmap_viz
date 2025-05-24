@@ -25,9 +25,9 @@ interface MindMapProps {
 const fitViewOptions = { padding: 0.18, includeHiddenNodes: true };
 const startX = 400;    // Center X of map
 const startY = 40;     // Top Y of map
-const xGap = 60;      // Horizontal gap between siblings (min)
-const yGap = 80;      // Vertical gap between layers
-const staggerY = 28;   // Vertical stagger within sibling group
+const xGap = 40;      // Horizontal gap between siblings (min)
+const yGap = 100;      // Vertical gap between layers
+const staggerY = 38;   // Vertical stagger within sibling group
 
 // --- Helper Functions ---
 function getChildMap(edges: Edge[]) {
