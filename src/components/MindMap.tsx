@@ -46,9 +46,9 @@ function assignStaggeredTreePositions(
   rootId: string,
   startX: number = 400,
   startY: number = 40,
-  xGap: number = 70,
-  yGap: number = 100,
-  staggerY: number = 26
+  xGap: number = 60,
+  yGap: number = 110,
+  staggerY: number = 36
 ) {
   const childMap = getChildMap(edges);
   const idToNode: Record<string, Node> = Object.fromEntries(nodes.map(n => [n.id, n]));
@@ -63,30 +63,25 @@ function assignStaggeredTreePositions(
     idToNode[id].position = { x, y };
     if (!children.length) return;
 
-    // Compute total width, horizontally center
-    const totalWidth = children.reduce((sum, c) => sum + labelWidth(c), 0) + xGap * (children.length - 1);
-    let left = x - totalWidth / 2 + labelWidth(children[0]) / 2;
+    // Calculate widths
+    const widths = children.map(childId => labelWidth(childId));
+    const totalWidth = widths.reduce((a, b) => a + b, 0) + xGap * (children.length - 1);
 
-    // Stagger children up/down, centered at y + yGap
-    const n = children.length;
+    // Compute starting X
+    let currX = x - totalWidth / 2 + widths[0] / 2;
+
+    // Stagger up/down
     const centerY = y + yGap;
-    const mid = Math.floor(n / 2);
 
+    // Alternate: 0=center, 1=up, 2=down, 3=up, 4=down, etc.
     children.forEach((childId, i) => {
-      // Alternate up/down from center
-      let verticalOffset;
-      if (n % 2 === 1) {
-        // Odd number: middle at center, then up, down, up, down, etc.
-        verticalOffset = (i - mid) * staggerY;
-      } else {
-        // Even: e.g. 4 children → offsets: -1.5, -0.5, +0.5, +1.5
-        verticalOffset = (i - (n - 1) / 2) * staggerY;
-      }
+      let offsetY = 0;
+      if (i === 0) offsetY = 0;
+      else if (i % 2 === 1) offsetY = -Math.ceil(i / 2) * staggerY; // up
+      else offsetY = Math.ceil(i / 2) * staggerY; // down
 
-      const childX = left + labelWidth(childId) / 2;
-      const childY = centerY + verticalOffset;
-      placeSubtree(childId, depth + 1, childX, childY);
-      left += labelWidth(childId) + xGap;
+      placeSubtree(childId, depth + 1, currX, centerY + offsetY);
+      currX += widths[i] / 2 + (widths[i + 1] ? widths[i + 1] / 2 : 0) + xGap;
     });
   }
 
