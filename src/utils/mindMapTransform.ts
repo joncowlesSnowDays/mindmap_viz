@@ -1,12 +1,25 @@
 import { Node, Edge } from "reactflow";
 
+/*
+ Expected GPT output:
+ {
+   nodes: [
+     { id: "concept-1", label: "Thrusters", group: "Propulsion", type: "concept", preview: false, collapsed: false, ... },
+     ...
+   ],
+   edges: [
+     { id: "edge-1", source: "concept-1", target: "concept-2", type: "informs" },
+     ...
+   ]
+ }
+*/
 export function transformGPTToFlow(gptData: any, prevNodes: Node[], prevEdges: Edge[]): { nodes: Node[]; edges: Edge[] } {
   if (!gptData || !gptData.nodes) return { nodes: [], edges: [] };
 
+  // Map node data to React Flow node format
   const nodes: Node[] = gptData.nodes.map((n: any) => ({
     id: n.id,
     type: n.preview ? "input" : "default",
-    label: n.label, // <-- THIS FIXES BLANK LABELS
     data: {
       label: n.label,
       group: n.group,
@@ -14,12 +27,7 @@ export function transformGPTToFlow(gptData: any, prevNodes: Node[], prevEdges: E
       collapsed: !!n.collapsed,
       ...n,
     },
-    position: n.position
-      ? {
-          x: n.position.x + (Math.random() - 0.5) * 60,
-          y: n.position.y + (Math.random() - 0.5) * 60,
-        }
-      : { x: Math.random() * 600, y: Math.random() * 500 },
+    position: n.position || { x: Math.random() * 400, y: Math.random() * 300 },
     parentNode: n.parentId || undefined,
     style: {
       border: n.preview ? "2px dashed #c026d3" : "1px solid #e5e7eb",
@@ -28,6 +36,7 @@ export function transformGPTToFlow(gptData: any, prevNodes: Node[], prevEdges: E
     },
   }));
 
+  // Map edges and apply color/type
   const edges: Edge[] = gptData.edges.map((e: any) => ({
     id: e.id,
     source: e.source,
@@ -46,4 +55,3 @@ export function transformGPTToFlow(gptData: any, prevNodes: Node[], prevEdges: E
 
   return { nodes, edges };
 }
-

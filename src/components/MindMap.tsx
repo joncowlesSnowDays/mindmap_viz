@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback, useRef, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import ReactFlow, {
   MiniMap,
   Controls,
@@ -9,12 +9,11 @@ import ReactFlow, {
   Node,
   Edge,
   Connection,
-  MarkerType,
 } from "reactflow";
 import "reactflow/dist/style.css";
-import { useGPT } from "../hooks/useGPT.ts";
-import { transformGPTToFlow } from "../utils/mindMapTransform.ts";
-import Legend from "./Legend.tsx";
+import { useGPT } from "../hooks/useGPT";
+import { transformGPTToFlow } from "../utils/mindMapTransform";
+import Legend from "./Legend";
 
 interface MindMapProps {
   userQuery: string;
@@ -30,16 +29,15 @@ const centerX = 400;
 const centerY = 300;
 const layerRadius = 180;
 
-// --- MULTI-LAYER RADIAL LAYOUT HELPERS ---
-function getChildMap(edges: Edge[]) {
-  const childMap: Record<string, string[]> = {};
-  edges.forEach((e) => {
-    if (!childMap[e.source]) childMap[e.source] = [];
-    childMap[e.source].push(e.target);
-  });
-  return childMap;
+// Helper to get direct children for a node
+function getChildrenAndEdges(nodeId: string, nodes: Node[], edges: Edge[]) {
+  const childrenIds = edges.filter(e => e.source === nodeId).map(e => e.target);
+  const children = nodes.filter(n => childrenIds.includes(n.id));
+  const childEdges = edges.filter(e => e.source === nodeId);
+  return { children, childEdges };
 }
 
+// Assign radial positions with jitter
 function assignRadialPositions(
   nodes: Node[],
   edges: Edge[],
@@ -51,12 +49,15 @@ function assignRadialPositions(
   layer: number = 1,
   parentCount: number = 1
 ) {
-  const childMap = getChildMap(edges);
+  const childMap: Record<string, string[]> = {};
+  edges.forEach((e) => {
+    if (!childMap[e.source]) childMap[e.source] = [];
+    childMap[e.source].push(e.target);
+  });
   const idToNode: Record<string, Node> = Object.fromEntries(nodes.map((n) => [n.id, n]));
-
-  // Amount of random jitter to apply to each node (in pixels)
-  const jitter = 30; // You can tweak this value
-
+  function randJitter(val: number) {
+    return val + (Math.random() - 0.5) * 32; // jitter up to ±16px
+  }
   function placeSubtree(
     id: string,
     center: { x: number; y: number },
@@ -70,12 +71,9 @@ function assignRadialPositions(
     const angleSpan = aEnd - aStart;
     children.forEach((childId, idx) => {
       const angle = aStart + (angleSpan * (idx + 1)) / (children.length + 1);
-      // Add random jitter to each node's position
-      const jitterX = (Math.random() - 0.5) * jitter;
-      const jitterY = (Math.random() - 0.5) * jitter;
       idToNode[childId].position = {
-        x: center.x + radius * layer * Math.cos(angle) + jitterX,
-        y: center.y + radius * layer * Math.sin(angle) + jitterY,
+        x: randJitter(center.x + radius * layer * Math.cos(angle)),
+        y: randJitter(center.y + radius * layer * Math.sin(angle)),
       };
       placeSubtree(
         childId,
@@ -88,8 +86,6 @@ function assignRadialPositions(
       );
     });
   }
-
-  // Place the root node at the center, no jitter for the root
   if (idToNode[rootId]) {
     idToNode[rootId].position = { ...center };
     placeSubtree(rootId, center, layerRadius, angleStart, angleEnd, layer, parentCount);
@@ -97,37 +93,41 @@ function assignRadialPositions(
   return Object.values(idToNode);
 }
 
-// --------------------
-
 const MindMap: React.FC<MindMapProps> = ({ userQuery, triggerUpdate }) => {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const { queryGPT, loading } = useGPT();
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
 
-  // Reference to current mind map state for context
-  const mindMapContextRef = useRef<{ nodes: Node[]; edges: Edge[] }>({ nodes: [], edges: [] });
-
-  // Click-to-expand for any node
+  // Partial expansion: only expand selected node
   const onNodeClick = useCallback(
     async (event, node) => {
-      mindMapContextRef.current = { nodes, edges };
-      const gptData = await queryGPT(node.data.label || node.id, mindMapContextRef.current, node.id);
-
-      console.log("GPT DATA (click):", gptData);
+      // 1. Minimal context: the node and its direct children/edges
+      const { children, childEdges } = getChildrenAndEdges(node.id, nodes, edges);
+      const minimalContext = {
+        nodes: [node, ...children],
+        edges: childEdges,
+      };
+      // 2. Call GPT
+      const gptData = await queryGPT(node.data.label || node.id, minimalContext, node.id);
 
       if (gptData && gptData.nodes && gptData.edges) {
-        let { nodes: newNodes, edges: newEdges } = transformGPTToFlow(gptData, nodes, edges);
-        const mainNodeId = newNodes[0]?.id || "main";
-        newNodes = assignRadialPositions(newNodes, newEdges, mainNodeId, { x: centerX, y: centerY });
+        // 3. Merge only new nodes/edges
+        const existingNodeIds = new Set(nodes.map(n => n.id));
+        const newNodes = gptData.nodes.filter(n => !existingNodeIds.has(n.id));
+        const mergedNodes = [...nodes, ...newNodes];
 
-        console.log("TRANSFORMED NODES (click):", newNodes);
-        console.log("TRANSFORMED EDGES (click):", newEdges);
+        const existingEdgeIds = new Set(edges.map(e => e.id));
+        const newEdges = gptData.edges.filter(e => !existingEdgeIds.has(e.id));
+        const mergedEdges = [...edges, ...newEdges];
 
-        setNodes(newNodes);
-        setEdges(newEdges);
+        // Layout (optional: reposition subtree or whole tree)
+        const mainNodeId = nodes[0]?.id || "main";
+        const withPositions = assignRadialPositions(mergedNodes, mergedEdges, mainNodeId, { x: centerX, y: centerY });
 
-        // FIT VIEW to updated nodes/edges after next tick
+        setNodes(withPositions);
+        setEdges(mergedEdges);
+
         if (reactFlowInstance) {
           setTimeout(() => {
             try {
@@ -142,39 +142,22 @@ const MindMap: React.FC<MindMapProps> = ({ userQuery, triggerUpdate }) => {
     [nodes, edges, queryGPT, reactFlowInstance]
   );
 
-  // Update mind map on explicit trigger, or reset to blank when userQuery is blank
-  useEffect(() => {
-    // If userQuery is empty or only whitespace, CLEAR the map
-    if (!userQuery || !userQuery.trim()) {
-      setNodes([]);
-      setEdges([]);
-      return;
-    }
-
-    // Otherwise, run normal initial topic logic
+  // Initial query (new root concept)
+  React.useEffect(() => {
     const updateMindMap = async () => {
-      mindMapContextRef.current = { nodes, edges };
-      const isFirstTime = !nodes.length && !edges.length;
-      const gptData = await queryGPT(
-        userQuery,
-        mindMapContextRef.current,
-        isFirstTime ? null : undefined
-      );
-
-      console.log("GPT DATA (query):", gptData);
-
+      if (!userQuery) return;
+      // Start fresh for a new query
+      const gptData = await queryGPT(userQuery, { nodes: [], edges: [] }, null);
       if (gptData && gptData.nodes && gptData.edges) {
-        let { nodes: newNodes, edges: newEdges } = transformGPTToFlow(gptData, nodes, edges);
-        const mainNodeId = newNodes[0]?.id || "main";
-        newNodes = assignRadialPositions(newNodes, newEdges, mainNodeId, { x: centerX, y: centerY });
+        const withPositions = assignRadialPositions(
+          gptData.nodes,
+          gptData.edges,
+          gptData.nodes[0]?.id || "main",
+          { x: centerX, y: centerY }
+        );
+        setNodes(withPositions);
+        setEdges(gptData.edges);
 
-        console.log("TRANSFORMED NODES (query):", newNodes);
-        console.log("TRANSFORMED EDGES (query):", newEdges);
-
-        setNodes(newNodes);
-        setEdges(newEdges);
-
-        // FIT VIEW to updated nodes/edges after next tick
         if (reactFlowInstance) {
           setTimeout(() => {
             try {
@@ -187,10 +170,10 @@ const MindMap: React.FC<MindMapProps> = ({ userQuery, triggerUpdate }) => {
       }
     };
     updateMindMap();
+    // Only trigger on initial triggerUpdate (new root query), NOT on every change
     // eslint-disable-next-line
   }, [triggerUpdate, userQuery, reactFlowInstance]);
 
-  // Allow user to manually connect nodes (drag edge)
   const onConnect = useCallback(
     (params: Edge | Connection) => setEdges((eds) => addEdge(params, eds)),
     [setEdges]
@@ -208,7 +191,7 @@ const MindMap: React.FC<MindMapProps> = ({ userQuery, triggerUpdate }) => {
         fitView
         fitViewOptions={fitViewOptions}
         attributionPosition="bottom-right"
-        onInit={setReactFlowInstance} // <-- This is critical!
+        onInit={setReactFlowInstance}
       >
         <MiniMap />
         <Controls />

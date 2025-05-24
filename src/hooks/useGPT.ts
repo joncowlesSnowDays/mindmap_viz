@@ -5,19 +5,11 @@ import axios from "axios";
 export function useGPT() {
   const [loading, setLoading] = useState(false);
 
-  // Now supports third argument: selectedNodeId (string or null)
-  const queryGPT = async (
-    userQuery: string,
-    mindMapContext: any,
-    selectedNodeId: string | null = null
-  ) => {
+  // Accept userQuery, mindMapContext, selectedNodeId (optional)
+  const queryGPT = async (userQuery: string, mindMapContext: any, selectedNodeId?: string) => {
     setLoading(true);
     try {
-      const res = await axios.post("/api/gpt", {
-        userQuery,
-        mindMapContext,
-        selectedNodeId, // always included, can be null
-      });
+      const res = await axios.post("/api/gpt", { userQuery, mindMapContext, selectedNodeId });
       setLoading(false);
       return res.data;
     } catch (e: any) {

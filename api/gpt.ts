@@ -4,86 +4,74 @@ import OpenAI from "openai";
 // Secure OpenAI key from env
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
-// Compose a prompt for GPT, including current map context and selected node
-function buildPrompt(userQuery: string, mindMapContext: any, selectedNodeId?: string) {
-  // Detect if it's the first time (empty map)
-  const isFirstTime =
-    !mindMapContext ||
-    !Array.isArray(mindMapContext.nodes) ||
-    mindMapContext.nodes.length === 0;
+// Build GPT prompt for either full map or partial expansion
+function buildPrompt(userQuery: string, mindMapContext: any, selectedNodeId?: string | null) {
+  if (!selectedNodeId) {
+    // Build a NEW mind map for a fresh query
+    return `
+You are an AI mind map builder.
+Build a new knowledge map for the topic: "${userQuery}".
 
-  return `
-You are an AI knowledge map builder. The user will ask a question and provide the current mind map (nodes, edges, groups).
-Your job is to return an updated set of concepts and relationships in JSON. Only do one of the following:
+- Create a root node for the topic.
+- Add 4-8 direct children (main subtopics). Each must be a key aspect, branch, or subdomain.
+- For each child node, set "preview": true if you want it to be expanded by the user later.
+- Output valid JSON using this structure:
 
-${isFirstTime ? `
-1. The mind map is empty (first time building a new tree):
-   - Generate a root node based on the user query.
-   - Generate 3-6 direct children for the root node, each a meaningful subtopic or key aspect.
-   - All nodes must have unique "id", "label", and belong to a logical "group" if appropriate.
-` : `
-2. The user has clicked on a node to expand (selected node ID: "${selectedNodeId}"):
-   - Expand ONLY the selected node by generating 3-6 direct children for it (no grandchildren).
-   - Do not modify or create new root nodes. Do not expand any node except the selected node.
-   - All new nodes must have unique "id", "label", and belong to a logical "group" if appropriate.
-`}
-
-Output must be valid, parseable JSON that matches the shape below:
-
-Example Output:
 {
   "nodes": [
     { "id": "root", "label": "Main Topic", "group": "Group A", "type": "concept", "preview": false, "collapsed": false },
-    { "id": "child1", "label": "Subtopic 1", "group": "Group A", "type": "concept", "preview": false, "collapsed": false },
-    { "id": "child2", "label": "Subtopic 2", "group": "Group A", "type": "concept", "preview": true, "collapsed": false }
+    { "id": "child1", "label": "Subtopic 1", "group": "Group A", "type": "concept", "preview": true, "collapsed": false }
+    // ...
   ],
   "edges": [
-    { "id": "e-root-child1", "source": "root", "target": "child1", "type": "informs" },
-    { "id": "e-root-child2", "source": "root", "target": "child2", "type": "depends on" }
+    { "id": "e-root-child1", "source": "root", "target": "child1", "type": "informs" }
+    // ...
   ]
 }
+Do NOT return grandchildren (only one layer of children).
+Do NOT include extra text, comments, or explanations. Only valid JSON.
+    `.trim();
+  } else {
+    // Partial expansion: expand only the selected node
+    return `
+You are an AI mind map builder.
+Expand ONLY the selected node with id "${selectedNodeId}" from the mind map below:
 
-**Node and Edge Structure:**
-- "group" clusters related concepts visually.
-- "type" in edges is one of: "informs", "depends on", "related".
-- "preview" nodes are semi-transparent, for user expansion.
-- Avoid duplicating nodes already present in the mind map.
-- Place new nodes in clear, logical relationships, minimizing clutter.
+${JSON.stringify(mindMapContext, null, 2)}
 
-**Rules:**
-- Do not include comments or extra text—only valid JSON.
-- Double-check for missing commas, mismatched quotes, or unclosed braces before returning.
-- Use unique, stable IDs (don’t re-use IDs of existing nodes unless updating).
-- Try to maximize visual clarity.
-- Do NOT generate more than 6 direct children for ANY node ever.
-- For initial builds, the total number of nodes must NOT exceed 7 (root + 6 children).
-- If you are running out of space, close all brackets and arrays and stop immediately.
-IMPORTANT:
-- You MUST ONLY generate 3 to 6 direct children for the node being expanded.
-- DO NOT generate any grandchildren or Layer 2 nodes.
-- If you generate grandchildren, that is a critical error.
-- All new nodes must be direct children only. No exceptions.
+- Generate 3-6 new direct children (meaningful subtopics or key aspects) for the selected node.
+- For each new child node, set "preview": true if you want it to be expandable by the user later.
+- Output ONLY the new nodes and edges you create, NOT the entire mind map.
+- All IDs must be unique and not conflict with those already present in the context.
+- Output valid JSON using this structure:
 
-**Current mind map (context):**
-${JSON.stringify(mindMapContext)}
-
-${selectedNodeId && !isFirstTime ? `**Selected node for expansion:** "${selectedNodeId}"` : ''}
-
-**User query:** "${userQuery}"
-
-Return only the updated mind map JSON.
-  `;
+{
+  "nodes": [
+    // new direct children only
+    { "id": "new_id_1", "label": "Subtopic A", "group": "Some Group", "type": "concept", "preview": true, "collapsed": false }
+  ],
+  "edges": [
+    // new edges, each connects selectedNodeId to a new child
+    { "id": "e-selectedNodeId-new_id_1", "source": "${selectedNodeId}", "target": "new_id_1", "type": "informs" }
+  ]
+}
+Do NOT return the full map, only new nodes and new edges.
+Do NOT include comments or extra text—only valid JSON.
+If you generate no new nodes, return empty arrays for nodes and edges.
+    `.trim();
+  }
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // Accept userQuery, mindMapContext, selectedNodeId from request body
   const { userQuery, mindMapContext, selectedNodeId } = req.body;
   const prompt = buildPrompt(userQuery, mindMapContext, selectedNodeId);
 
   // --- Debug logs start ---
   console.log("API key:", process.env.OPENAI_API_KEY ? "present" : "missing");
   console.log("userQuery:", userQuery);
-  console.log("mindMapContext:", mindMapContext);
   console.log("selectedNodeId:", selectedNodeId);
+  console.log("mindMapContext:", mindMapContext);
   console.log("Prompt sent to OpenAI:", prompt);
   // --- Debug logs end ---
 
@@ -95,7 +83,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         { role: "user", content: prompt }
       ],
       response_format: { type: "json_object" },
-      max_tokens: 3000,
+      max_tokens: 2000,
       temperature: 0.3
     });
 
