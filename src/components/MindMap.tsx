@@ -46,7 +46,7 @@ function assignStaggeredTreePositions(
   rootId: string,
   startX: number = 400,
   startY: number = 40,
-  xGap: number = 80,
+  xGap: number = 60,
   yGap: number = 120,
   staggerY: number = 26 // how much to fan out vertically per child index
 ) {
