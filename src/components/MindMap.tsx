@@ -16,6 +16,7 @@ import "reactflow/dist/style.css";
 import { useGPT } from "../hooks/useGPT.ts";
 import { transformGPTToFlow, mergeExpandedNodesAndEdges } from "../utils/mindMapTransform.ts";
 import Legend from "./Legend.tsx";
+import MindMapNode from "./mindMapNode";
 
 interface MindMapProps {
   userQuery: string;
@@ -163,6 +164,8 @@ function resolveNodeOverlapsBoundingBox(
   }
   return boxes.map(({ _box, ...node }) => node);
 }
+
+const nodeTypes = { mindMapNode: MindMapNode };
 
 const MindMap: React.FC<MindMapProps> = ({
   userQuery, triggerUpdate, automateCount = 3, automateSignal = 0,
@@ -349,6 +352,7 @@ const MindMap: React.FC<MindMapProps> = ({
         fitViewOptions={fitViewOptions}
         attributionPosition="bottom-right"
         onInit={setReactFlowInstance}
+        nodeTypes={nodeTypes}
       >
         <MiniMap />
         <Controls />
