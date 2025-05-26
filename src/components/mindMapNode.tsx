@@ -26,13 +26,45 @@ const MindMapNode: React.FC<NodeProps> = ({ data, isConnectable, selected }) => 
     <Handle
       type="source"
       position={Position.Right}
-      style={{ opacity: 0, pointerEvents: "none" }}
+      style={{ 
+        background: "#555",
+        width: 8,
+        height: 8,
+        border: "2px solid white"
+      }}
       isConnectable={isConnectable}
     />
     <Handle
       type="target"
       position={Position.Left}
-      style={{ opacity: 0, pointerEvents: "none" }}
+      style={{ 
+        background: "#555",
+        width: 8,
+        height: 8,
+        border: "2px solid white"
+      }}
+      isConnectable={isConnectable}
+    />
+    <Handle
+      type="source"
+      position={Position.Top}
+      style={{ 
+        background: "#555",
+        width: 8,
+        height: 8,
+        border: "2px solid white"
+      }}
+      isConnectable={isConnectable}
+    />
+    <Handle
+      type="target"
+      position={Position.Bottom}
+      style={{ 
+        background: "#555",
+        width: 8,
+        height: 8,
+        border: "2px solid white"
+      }}
       isConnectable={isConnectable}
     />
   </div>
