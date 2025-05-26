@@ -16,7 +16,7 @@ import "reactflow/dist/style.css";
 import { useGPT } from "../hooks/useGPT.ts";
 import { transformGPTToFlow, mergeExpandedNodesAndEdges } from "../utils/mindMapTransform.ts";
 import Legend from "./Legend.tsx";
-import MindMapNode from "./mindMapNode";
+import MindMapNode from "./mindMapNode.tsx";
 
 interface MindMapProps {
   userQuery: string;
