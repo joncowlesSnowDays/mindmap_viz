@@ -578,6 +578,7 @@ const MindMap: React.FC<MindMapProps> = ({
           ...node,
           data: {
             ...node.data,
+            label: node.data.label,
             onInfoClick: handleInfoClick,
             isRoot: node.id === nodes[0]?.id
           }
