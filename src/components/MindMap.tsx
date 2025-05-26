@@ -547,6 +547,7 @@ const MindMap: React.FC<MindMapProps> = ({
 
     setModalTitle(node.data.label);
     setModalOpen(true);
+    setModalContent(""); // Reset content while loading
     
     // Get child labels if any
     const childIds = edges
@@ -556,8 +557,17 @@ const MindMap: React.FC<MindMapProps> = ({
       .map(id => nodes.find(n => n.id === id)?.data.label)
       .filter(Boolean) as string[];
 
-    const info = await queryNodeInfo(nodeId, node.data.label, childLabels);
-    setModalContent(info);
+    try {
+      const info = await queryNodeInfo(nodeId, node.data.label, childLabels);
+      if (info) {
+        setModalContent(info);
+      } else {
+        setModalContent("Failed to load information for this node.");
+      }
+    } catch (error) {
+      console.error("Error loading node info:", error);
+      setModalContent("An error occurred while loading information.");
+    }
   }, [nodes, edges, queryNodeInfo]);
 
   return (
