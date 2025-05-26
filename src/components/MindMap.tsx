@@ -11,6 +11,7 @@ import ReactFlow, {
   Connection,
   OnNodesChange,
   NodeChange,
+  applyNodeChanges,
 } from "reactflow";
 import "reactflow/dist/style.css";
 import { useGPT } from "../hooks/useGPT.ts";
@@ -170,7 +171,7 @@ const nodeTypes = { mindMapNode: MindMapNode };
 const MindMap: React.FC<MindMapProps> = ({
   userQuery, triggerUpdate, automateCount = 3, automateSignal = 0,
 }) => {
-  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  const [nodes, setNodes] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const { queryGPT, loading } = useGPT();
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
@@ -178,82 +179,50 @@ const MindMap: React.FC<MindMapProps> = ({
   const mindMapContextRef = useRef<{ nodes: Node[]; edges: Edge[] }>({ nodes: [], edges: [] });
   const userPositionsRef = useRef<Record<string, {x: number, y: number}>>({});
 
-  // Wrap onNodesChange to track position updates
-  const wrappedOnNodesChange = useCallback((changes: NodeChange[]) => {
-    changes.forEach(change => {
-      if (change.type === 'position' && change.position && change.id) {
-        userPositionsRef.current[change.id] = change.position;
-      }
-    });
-    onNodesChange(changes);
-  }, [onNodesChange]);
-
-  // Handle descendant movement after node drag
-  const onNodeDragStop = useCallback(
-    (_event: any, node: Node) => {
+  // Handle ALL node position changes including dragging
+  const onNodesChange = useCallback<OnNodesChange>(
+    (changes: NodeChange[]) => {
+      let updated = [...nodes];
       const childMap = getChildMap(edges);
-      const descendantIds = getDescendantIds(node.id, childMap);
-      
-      // Save user-moved position
-      userPositionsRef.current[node.id] = node.position;
 
-      // Calculate movement delta
-      const prevPos = nodes.find(n => n.id === node.id)?.position;
-      if (!prevPos) return;
-      
-      const dx = node.position.x - prevPos.x;
-      const dy = node.position.y - prevPos.y;
+      changes.forEach(change => {
+        if (change.type === "position" && change.position && change.dragging) {
+          // Save user-moved position
+          const newPos = {
+            x: change.position.x ?? 0,
+            y: change.position.y ?? 0,
+          };
+          userPositionsRef.current[change.id] = newPos;
 
-      // Move descendants
-      setNodes(nds => 
-        nds.map(n => {
-          if (descendantIds.includes(n.id)) {
-            const newPos = {
-              x: n.position.x + dx,
-              y: n.position.y + dy
-            };
-            userPositionsRef.current[n.id] = newPos;
-            return {
-              ...n,
-              position: newPos
-            };
-          }
-          return n;
-        })
-      );
-    },
-    [nodes, edges, setNodes]
-  );
+          // Get the node's old position
+          const node = nodes.find(n => n.id === change.id);
+          if (!node) return;
 
-  const onNodeDrag = useCallback(
-    (_event: any, node: Node) => {
-      const childMap = getChildMap(edges);
-      const descendantIds = getDescendantIds(node.id, childMap);
-      
-      // Calculate movement delta from last known position
-      const prevPos = nodes.find(n => n.id === node.id)?.position;
-      if (!prevPos) return;
-      
-      const dx = node.position.x - prevPos.x;
-      const dy = node.position.y - prevPos.y;
+          // Calculate movement delta
+          const dx = newPos.x - node.position.x;
+          const dy = newPos.y - node.position.y;
 
-      // Move descendants in real-time
-      setNodes(nds => 
-        nds.map(n => {
-          if (descendantIds.includes(n.id)) {
-            return {
-              ...n,
-              position: {
+          // Move all descendants by the same delta
+          const descendantIds = getDescendantIds(change.id, childMap);
+          updated = updated.map(n => {
+            if (descendantIds.includes(n.id)) {
+              const newPos = {
                 x: n.position.x + dx,
                 y: n.position.y + dy
-              }
-            };
-          }
-          return n;
-        })
+              };
+              userPositionsRef.current[n.id] = newPos;
+              return { ...n, position: newPos };
+            }
+            return n;
+          });
+        }
+      });
+
+      setNodes(
+        applyNodeChanges(changes, updated)
       );
     },
-    [nodes, edges, setNodes]
+    [nodes, edges]
   );
 
   // --- Initial Mind Map
@@ -368,10 +337,8 @@ const MindMap: React.FC<MindMapProps> = ({
       <ReactFlow
         nodes={nodes}
         edges={edges}
-        onNodesChange={wrappedOnNodesChange}
+        onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
-        onNodeDrag={onNodeDrag}
-        onNodeDragStop={onNodeDragStop}
         onConnect={onConnect}
         onNodeClick={onNodeClick}
         fitView
