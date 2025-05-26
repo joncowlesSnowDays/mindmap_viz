@@ -347,6 +347,13 @@ const MindMap: React.FC<MindMapProps> = ({
         attributionPosition="bottom-right"
         onInit={setReactFlowInstance}
         nodeTypes={nodeTypes}
+        defaultEdgeOptions={{
+          type: 'smoothstep',
+          animated: false,
+          style: { strokeWidth: 1.5 }
+        }}
+        snapToGrid={false}
+        selectNodesOnDrag={false}
       >
         <MiniMap />
         <Controls />

@@ -71,14 +71,22 @@ export function transformGPTToFlow(gptData: any): { nodes: Node[]; edges: Edge[]
     id: e.id,
     source: e.source,
     target: e.target,
-    // label: e.type, // No label for edge
     style: {
-      stroke: randomColor(),
-      strokeWidth: 2,
+      stroke: e.type === 'informs' ? '#3b82f6' : 
+             e.type === 'depends' ? '#22c55e' : 
+             e.type === 'related' ? '#f59e42' : '#c026d3',
+      strokeWidth: 1.5,
     },
-    markerEnd: { type: MarkerType.ArrowClosed },
+    markerEnd: {
+      type: MarkerType.ArrowClosed,
+      width: 20,
+      height: 20,
+      color: e.type === 'informs' ? '#3b82f6' : 
+             e.type === 'depends' ? '#22c55e' : 
+             e.type === 'related' ? '#f59e42' : '#c026d3',
+    },
     animated: !!e.preview,
-    type: "default"
+    type: 'smoothstep'
   }));
 
   return { nodes, edges };
