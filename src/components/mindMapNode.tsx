@@ -19,11 +19,6 @@ const MindMapNode: React.FC<NodeProps> = ({ data, isConnectable, selected }) => 
       width: "fit-content",
       pointerEvents: "auto",
     }}
-    onClick={(e) => {
-      if (typeof data.onClick === 'function') {
-        data.onClick(e);
-      }
-    }}
     tabIndex={0}
     role="button"
     aria-label={data.label}
