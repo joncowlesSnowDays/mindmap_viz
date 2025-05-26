@@ -19,8 +19,7 @@ const MindMapNode: React.FC<NodeProps> = ({ data, isConnectable, selected }) => 
       width: "fit-content",
       pointerEvents: "auto",
     }}
-    onMouseDown={(e) => {
-      e.stopPropagation();
+    onClick={(e) => {
       if (typeof data.onClick === 'function') {
         data.onClick(e);
       }
