@@ -39,10 +39,10 @@ const minNodeHeight = 26; // Reduced from 32 to 26 for more compact nodes
 
 // --- Node size estimation ---
 function estimateNodeWidth(label: string): number {
-  return Math.max(80, label.length * 8.5 + minNodePadding * 2);
+  return Math.max(80, label.length * 8.5 + minNodePadding * 2 + 24);
 }
 function estimateNodeHeight(): number {
-  return minNodeHeight;
+  return Math.max(minNodeHeight, 30); 
 }
 
 // --- Child map ---
