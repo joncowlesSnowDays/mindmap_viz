@@ -354,7 +354,12 @@ const MindMap: React.FC<MindMapProps> = ({
 }) => {
   const [nodes, setNodes] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-  const { queryGPT, loading } = useGPT();
+  const { queryGPT, queryNodeInfo, loading, infoLoading } = useGPT();
+  
+  // Modal state
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalContent, setModalContent] = useState("");
+  const [modalTitle, setModalTitle] = useState("");
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
   const expandedCache = useRef<Record<string, boolean>>({});
   const mindMapContextRef = useRef<{ nodes: Node[]; edges: Edge[] }>({ nodes: [], edges: [] });
@@ -535,10 +540,37 @@ const MindMap: React.FC<MindMapProps> = ({
     [setEdges]
   );
 
+  // Handle info button click
+  const handleInfoClick = useCallback(async (nodeId: string) => {
+    const node = nodes.find(n => n.id === nodeId);
+    if (!node) return;
+
+    setModalTitle(node.data.label);
+    setModalOpen(true);
+    
+    // Get child labels if any
+    const childIds = edges
+      .filter(e => e.source === nodeId)
+      .map(e => e.target);
+    const childLabels = childIds
+      .map(id => nodes.find(n => n.id === id)?.data.label)
+      .filter(Boolean) as string[];
+
+    const info = await queryNodeInfo(nodeId, node.data.label, childLabels);
+    setModalContent(info);
+  }, [nodes, edges, queryNodeInfo]);
+
   return (
     <div style={{ flex: 1, height: "100vh" }}>
       <ReactFlow
-        nodes={nodes}
+        nodes={nodes.map(node => ({
+          ...node,
+          data: {
+            ...node.data,
+            onInfoClick: handleInfoClick,
+            isRoot: node.id === nodes[0]?.id
+          }
+        }))}
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
@@ -570,6 +602,13 @@ const MindMap: React.FC<MindMapProps> = ({
         <Background color="#aaa" gap={32} />
       </ReactFlow>
       <Legend />
+      <InfoModal
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        title={modalTitle}
+        content={modalContent}
+        loading={infoLoading}
+      />
       {loading && (
         <div style={{
           position: "absolute",

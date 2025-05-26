@@ -1,7 +1,11 @@
 import React from "react";
 import { Handle, NodeProps, Position } from "reactflow";
 
-const MindMapNode: React.FC<NodeProps> = ({ data, isConnectable, selected }) => (
+interface MindMapNodeProps extends NodeProps {
+  onInfoClick?: (nodeId: string) => void;
+}
+
+const MindMapNode: React.FC<MindMapNodeProps> = ({ data, isConnectable, selected, onInfoClick, id }) => (
   <div
     style={{
       background: "#fff",
@@ -20,15 +24,49 @@ const MindMapNode: React.FC<NodeProps> = ({ data, isConnectable, selected }) => 
       fontSize: 13,
       display: "flex",
       alignItems: "center",
-      justifyContent: "center",
+      gap: 8,
       lineHeight: 1,
       whiteSpace: "nowrap",
+      position: "relative",
     }}
     tabIndex={0}
     role="button"
     aria-label={data.label}
   >
-    {data.label}
+    <span style={{ flex: 1 }}>{data.label}</span>
+    {!data.isRoot && (
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onInfoClick?.(id);
+        }}
+        style={{
+          width: 16,
+          height: 16,
+          padding: 0,
+          border: "none",
+          background: "none",
+          cursor: "pointer",
+          opacity: 0.6,
+          transition: "opacity 0.2s",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.opacity = "1";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.opacity = "0.6";
+        }}
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="12" cy="12" r="10" />
+          <path d="M12 16v-4" />
+          <path d="M12 8h.01" />
+        </svg>
+      </button>
+    )}
     <Handle
       type="source"
       position={Position.Bottom}

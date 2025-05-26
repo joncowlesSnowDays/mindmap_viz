@@ -4,6 +4,15 @@ import OpenAI from "openai";
 // Secure OpenAI key from env
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
+function buildInfoPrompt(nodeId: string, nodeLabel: string, childLabels: string[] = []) {
+  return `
+Generate a detailed paragraph about "${nodeLabel}". 
+${childLabels.length > 0 ? `Include how it relates to its subtopics: ${childLabels.join(", ")}.` : ""}
+Focus on providing insightful, accurate, and well-structured information.
+Keep the response concise but informative (2-4 sentences).
+`.trim();
+}
+
 function buildPrompt(userQuery: string, mindMapContext: any, selectedNodeId?: string | null) {
   if (!selectedNodeId) {
     // NEW mind map creation
@@ -60,7 +69,32 @@ If you generate no new nodes, return empty arrays for nodes and edges.
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // Accept userQuery, mindMapContext, selectedNodeId from request body
+  if (req.method === "POST" && req.body.type === "getInfo") {
+    const { nodeId, nodeLabel, childLabels } = req.body;
+    const prompt = buildInfoPrompt(nodeId, nodeLabel, childLabels);
+    
+    try {
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4",
+        messages: [
+          { role: "system", content: "You are an expert at explaining concepts clearly and concisely." },
+          { role: "user", content: prompt }
+        ],
+        max_tokens: 200,
+        temperature: 0.7
+      });
+
+      const content = completion.choices[0]?.message?.content;
+      res.status(200).json({ content });
+      return;
+    } catch (err) {
+      console.error("OpenAI API error:", err);
+      res.status(500).json({ error: "OpenAI API error", details: err?.message });
+      return;
+    }
+  }
+
+  // Handle regular mind map expansion
   const { userQuery, mindMapContext, selectedNodeId } = req.body;
   const prompt = buildPrompt(userQuery, mindMapContext, selectedNodeId);
 

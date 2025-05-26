@@ -4,8 +4,26 @@ import axios from "axios";
 // Custom hook to handle calls to backend GPT API
 export function useGPT() {
   const [loading, setLoading] = useState(false);
+  const [infoLoading, setInfoLoading] = useState(false);
 
-  // Add selectedNodeId as a third parameter
+  const queryNodeInfo = async (nodeId: string, nodeLabel: string, childLabels: string[] = []) => {
+    setInfoLoading(true);
+    try {
+      const res = await axios.post("/api/gpt", {
+        type: "getInfo",
+        nodeId,
+        nodeLabel,
+        childLabels,
+      });
+      setInfoLoading(false);
+      return res.data.content;
+    } catch (e: any) {
+      setInfoLoading(false);
+      console.error("Info query failed:", e);
+      return "Failed to load information. Please try again.";
+    }
+  };
+
   const queryGPT = async (
     userQuery: string,
     mindMapContext: any,
@@ -27,5 +45,5 @@ export function useGPT() {
     }
   };
 
-  return { queryGPT, loading };
+  return { queryGPT, queryNodeInfo, loading, infoLoading };
 }
