@@ -64,7 +64,116 @@ function getDescendantIds(nodeId: string, childMap: Record<string, string[]>, ac
   return acc;
 }
 
-// --- Staggered Tree with manual position override ---
+// --- Space Finding Utilities ---
+function findOpenSpace(
+  existingNodes: Node[],
+  parentNode: Node,
+  nodeWidth: number,
+  nodeHeight: number,
+  staggerOffset: number,
+  childIndex: number,
+  siblingCount: number
+): { x: number; y: number } {
+  // Convert existing nodes to bounding boxes for collision checks
+  const boxes = existingNodes.map(n => ({
+    x: n.position.x - estimateNodeWidth(n.data?.label || "") / 2,
+    y: n.position.y - nodeHeight / 2,
+    width: estimateNodeWidth(n.data?.label || ""),
+    height: nodeHeight,
+    id: n.id
+  }));
+
+  // Calculate base position with improved stagger
+  const sign = (childIndex % 2 === 0) ? 1 : -1;
+  const offsetIdx = Math.floor((childIndex + 1) / 2);
+  const baseStaggerY = sign * offsetIdx * (staggerY * 0.8); // Reduced stagger
+
+  // Start from parent's position with dynamic gap
+  const baseX = parentNode.position.x;
+  const dynamicYGap = Math.max(yGap, nodeHeight * 1.5);
+  const baseY = parentNode.position.y + dynamicYGap;
+  const parentBoundary = parentNode.position.y + nodeHeight;
+  
+  // Calculate horizontal spread with weighted distribution
+  const totalWidth = siblingCount * (nodeWidth + xGap * 1.2);
+  const weightedOffset = (childIndex - (siblingCount - 1) / 2) * (nodeWidth + xGap);
+  const proposedX = baseX + weightedOffset;
+
+  // Define search grid with adaptive radius
+  const maxAttempts = 8;
+  const baseRadius = Math.max(nodeHeight * 2, nodeWidth);
+  const positions: Array<{x: number, y: number, score: number}> = [];
+
+  // Spiral search pattern
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const radius = attempt * (nodeHeight / 2);
+    const angleStep = Math.PI / 4;
+    
+    for (let angle = 0; angle < Math.PI * 2; angle += angleStep) {
+      const xOffset = Math.cos(angle) * radius;
+      const yOffset = Math.abs(Math.sin(angle) * radius);
+      const proposedY = baseY + baseStaggerY + yOffset;
+
+      // Ensure minimum parent-child separation
+      if (proposedY <= parentNode.position.y + nodeHeight + minNodeHeight/2) continue;
+
+      // Position candidate
+      const proposed = {
+        x: proposedX + xOffset - nodeWidth / 2,
+        y: proposedY - nodeHeight / 2,
+        width: nodeWidth,
+        height: nodeHeight
+      };
+
+      // Check for collisions with minimum spacing
+      const hasCollision = boxes.some(box => {
+        const spacing = box.id === parentNode.id ? nodeHeight : minNodePadding;
+        return checkCollisionWithSpacing(proposed, box, spacing);
+      });
+
+      if (!hasCollision) {
+        // Score based on multiple factors
+        const distanceFromIdeal = Math.sqrt(
+          Math.pow(xOffset, 2) + Math.pow(yOffset - baseStaggerY, 2)
+        );
+        const verticalScore = Math.abs(proposedY - (baseY + baseStaggerY));
+        const horizontalScore = Math.abs(xOffset);
+
+        positions.push({
+          x: proposedX + xOffset,
+          y: proposedY,
+          score: distanceFromIdeal * 0.5 + verticalScore + horizontalScore * 0.7
+        });
+      }
+    }
+
+    // Early exit if we found good positions
+    if (positions.length >= 3) break;
+  }
+
+  // Pick the best position considering multiple factors
+  if (positions.length > 0) {
+    const best = positions.reduce((a, b) => a.score < b.score ? a : b);
+    return { x: best.x, y: best.y };
+  }
+
+  // Fallback with increased vertical offset if no space found
+  return { 
+    x: proposedX,
+    y: baseY + baseStaggerY + nodeHeight * 2
+  };
+}
+
+function checkCollisionWithSpacing(a: any, b: any, spacing: number = minNodePadding) {
+  return !(
+    a.x + a.width + spacing < b.x ||
+    b.x + b.width + spacing < a.x ||
+    a.y + a.height + spacing < b.y ||
+    b.y + b.height + spacing < a.y
+  );
+}
+
+// --- Staggered Tree with manual position override and space finding ---
 function assignStaggeredTreePositions(
   nodes: Node[],
   edges: Edge[],
@@ -94,29 +203,40 @@ function assignStaggeredTreePositions(
 
     // Get the actual parent node position (could be manual or calculated)
     const parentPos = idToNode[id].position;
-    const parentBottom = parentPos.y + minNodeHeight/2;  // y is center, so add half height
+    const parentBottom = parentPos.y + minNodeHeight/2;
 
     const totalChildrenWidth =
       children.reduce((sum, cid) => sum + nodeWidth(cid), 0) +
       xGap * (children.length - 1);
 
     let left = x - totalChildrenWidth / 2 + nodeWidth(children[0]) / 2;
+    
+    // Place children with smart space finding
     children.forEach((childId, i) => {
-      const sign = (i % 2 === 0) ? 1 : -1;
-      const offsetIdx = Math.floor((i + 1) / 2);
-      const dy = sign * offsetIdx * staggerY;
+      if (userPositions[childId]) {
+        placeSubtree(childId, depth + 1, userPositions[childId].x, userPositions[childId].y);
+        return;
+      }
+
       const childX = left + nodeWidth(childId) / 2;
+      const existingNodes = Object.values(idToNode).filter(n => 
+        n.id !== childId && !children.includes(n.id)
+      );
+
+      const position = findOpenSpace(
+        existingNodes,
+        idToNode[id],
+        nodeWidth(childId),
+        minNodeHeight,
+        staggerY,
+        i,
+        children.length
+      );
+
+      // Ensure the child stays below parent
+      const adjustedY = Math.max(position.y, parentBottom + minNodeHeight/2);
       
-      // Calculate child position ensuring it stays below parent
-      const baseY = y + yGap;  // Start at standard vertical gap
-      const proposedY = baseY + dy;  // Apply stagger
-      const childTop = proposedY - minNodeHeight/2;  // Calculate where child's top would be
-      
-      // Force child to stay below parent while preserving relative stagger
-      const minAllowedY = parentBottom + minNodeHeight/2;  // Minimum allowed center position for child
-      const adjustedY = Math.max(proposedY, minAllowedY);
-      
-      placeSubtree(childId, depth + 1, childX, adjustedY);
+      placeSubtree(childId, depth + 1, position.x, adjustedY);
       left += nodeWidth(childId) + xGap;
     });
   }
@@ -323,7 +443,7 @@ const MindMap: React.FC<MindMapProps> = ({
     const expandRandomNodes = async () => {
       let localExpanded = { ...expandedCache.current };
       let localNodes = [...nodes], localEdges = [...edges];
-      let expandable = () => localNodes.filter(n => !localExpanded[n.id]);
+      let expandable = () => localNodes.filter(n => !localExpanded[n.id] && n.data?.preview);
       let count = Math.min(automateCount, expandable().length);
 
       for (let i = 0; i < count; ++i) {
@@ -388,17 +508,38 @@ const MindMap: React.FC<MindMapProps> = ({
         }}
         snapToGrid={false}
         selectNodesOnDrag={false}
+        minZoom={0.1}
+        maxZoom={2}
+        nodesDraggable={true}
+        nodesConnectable={false}
       >
-        <MiniMap />
-        <Controls />
-        <Background />
+        <MiniMap 
+          nodeStrokeColor="#aaa"
+          nodeColor="#fff"
+          nodeBorderRadius={8}
+        />
+        <Controls showInteractive={false} />
+        <Background color="#aaa" gap={32} />
       </ReactFlow>
       <Legend />
       {loading && (
         <div style={{
-          position: "absolute", top: 20, right: 20, background: "#fffbe8", padding: 16, borderRadius: 8,
-          boxShadow: "0 2px 8px rgba(0,0,0,0.10)", fontWeight: "bold"
+          position: "absolute",
+          top: 20,
+          right: 20,
+          background: "#fffbe8",
+          padding: "12px 20px",
+          borderRadius: 8,
+          boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
+          fontWeight: 500,
+          fontSize: 14,
+          color: "#333",
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          zIndex: 1000
         }}>
+          <div style={{ width: 16, height: 16, border: "3px solid #7c3aed", borderRightColor: "transparent", borderRadius: "50%", animation: "spin 1s linear infinite" }} />
           Querying AI...
         </div>
       )}
