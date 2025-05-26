@@ -13,22 +13,22 @@ const MindMapNode: React.FC<MindMapNodeProps> = ({ data, isConnectable, selected
       style={{
         background: "#fff",
         border: selected ? "2px solid #7c3aed" : "1.5px solid #bbb",
-        borderRadius: 8,
-        padding: "4px 16px",
-        minWidth: 60,
-        height: 30,
+        borderRadius: 12,
+        padding: "8px 16px",
+        minWidth: 120,
         boxShadow: "0 2px 7px rgba(0,0,0,0.09)",
-        textAlign: "center",
+        textAlign: "left",
         userSelect: "none",
         cursor: "grab",
         fontWeight: 500,
         transition: "border 0.12s ease-in-out",
         width: "fit-content",
-        fontSize: 13,
+        fontSize: 16,
         display: "flex",
         alignItems: "center",
-        gap: 8,
-        lineHeight: 1,
+        justifyContent: "space-between",
+        gap: 12,
+        lineHeight: 1.2,
         whiteSpace: "nowrap",
         position: "relative",
       }}
@@ -45,19 +45,17 @@ const MindMapNode: React.FC<MindMapNodeProps> = ({ data, isConnectable, selected
             data.onInfoClick?.(id);
           }}
           style={{
-            width: 18,
-            height: 18,
+            width: 24,
+            height: 24,
             padding: 0,
-            marginLeft: 4,
             border: "none",
             background: "none",
             cursor: "pointer",
             opacity: 0.6,
             transition: "opacity 0.2s",
-            display: "inline-flex",
+            display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            verticalAlign: "middle",
           }}
           onMouseEnter={(e) => {
             e.currentTarget.style.opacity = "1";
@@ -66,7 +64,7 @@ const MindMapNode: React.FC<MindMapNodeProps> = ({ data, isConnectable, selected
             e.currentTarget.style.opacity = "0.6";
           }}
         >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
             <circle cx="12" cy="12" r="10" />
             <path d="M12 16v-4" />
             <path d="M12 8h.01" />
