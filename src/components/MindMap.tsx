@@ -34,7 +34,7 @@ const xGap = 20;
 const yGap = 110;
 const staggerY = 32;
 const minNodePadding = 20;
-const minNodeHeight = 48;
+const minNodeHeight = 32; // Reduced from 48 to 32
 
 // --- Node size estimation ---
 function estimateNodeWidth(label: string): number {
@@ -92,6 +92,9 @@ function assignStaggeredTreePositions(
     idToNode[id].position = manual ? { ...manual } : { x, y };
     if (!children.length) return;
 
+    // Calculate parent's bottom edge
+    const parentBottom = y + minNodeHeight/2;  // y is center, so add half height
+
     const totalChildrenWidth =
       children.reduce((sum, cid) => sum + nodeWidth(cid), 0) +
       xGap * (children.length - 1);
@@ -103,7 +106,16 @@ function assignStaggeredTreePositions(
       const offsetIdx = Math.floor((i + 1) / 2);
       const dy = sign * offsetIdx * staggerY;
       const childX = left + nodeWidth(childId) / 2;
-      placeSubtree(childId, depth + 1, childX, y + yGap + dy);
+      
+      // Ensure child's top edge doesn't go above parent's bottom edge
+      const baseY = y + yGap;  // Start at standard vertical gap
+      const proposedY = baseY + dy;  // Apply stagger
+      const childTop = proposedY - minNodeHeight/2;  // Calculate where child's top would be
+      const adjustedY = childTop < parentBottom ? 
+                       parentBottom + minNodeHeight/2 : // If too high, push down to parent bottom
+                       proposedY;  // Otherwise keep proposed position
+      
+      placeSubtree(childId, depth + 1, childX, adjustedY);
       left += nodeWidth(childId) + xGap;
     });
   }
