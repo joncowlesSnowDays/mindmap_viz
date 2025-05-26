@@ -225,6 +225,37 @@ const MindMap: React.FC<MindMapProps> = ({
     [nodes, edges, setNodes]
   );
 
+  const onNodeDrag = useCallback(
+    (_event: any, node: Node) => {
+      const childMap = getChildMap(edges);
+      const descendantIds = getDescendantIds(node.id, childMap);
+      
+      // Calculate movement delta from last known position
+      const prevPos = nodes.find(n => n.id === node.id)?.position;
+      if (!prevPos) return;
+      
+      const dx = node.position.x - prevPos.x;
+      const dy = node.position.y - prevPos.y;
+
+      // Move descendants in real-time
+      setNodes(nds => 
+        nds.map(n => {
+          if (descendantIds.includes(n.id)) {
+            return {
+              ...n,
+              position: {
+                x: n.position.x + dx,
+                y: n.position.y + dy
+              }
+            };
+          }
+          return n;
+        })
+      );
+    },
+    [nodes, edges, setNodes]
+  );
+
   // --- Initial Mind Map
   useEffect(() => {
     const updateMindMap = async () => {
@@ -339,6 +370,7 @@ const MindMap: React.FC<MindMapProps> = ({
         edges={edges}
         onNodesChange={wrappedOnNodesChange}
         onEdgesChange={onEdgesChange}
+        onNodeDrag={onNodeDrag}
         onNodeDragStop={onNodeDragStop}
         onConnect={onConnect}
         onNodeClick={onNodeClick}
