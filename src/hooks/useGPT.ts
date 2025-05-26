@@ -8,6 +8,7 @@ export function useGPT() {
 
   const queryNodeInfo = async (nodeId: string, nodeLabel: string, childLabels: string[] = []) => {
     setInfoLoading(true);
+    console.log('Making API call for node info:', { nodeId, nodeLabel, childLabels });
     try {
       const res = await axios.post("/api/gpt", {
         type: "getInfo",
@@ -16,9 +17,11 @@ export function useGPT() {
         childLabels,
       });
       setInfoLoading(false);
+      console.log('Received node info response:', res.data);
       return res.data.content;
     } catch (e: any) {
       setInfoLoading(false);
+      console.log('Node info API call failed:', e);
       console.error("Info query failed:", e);
       return "Failed to load information. Please try again.";
     }

@@ -38,6 +38,7 @@ const MindMapNode: React.FC<MindMapNodeProps> = ({ data, isConnectable, selected
       <button
         onClick={(e) => {
           e.stopPropagation();
+          console.log('Info button clicked for node:', id);
           onInfoClick?.(id);
         }}
         style={{

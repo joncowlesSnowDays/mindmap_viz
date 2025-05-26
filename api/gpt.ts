@@ -70,6 +70,7 @@ If you generate no new nodes, return empty arrays for nodes and edges.
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === "POST" && req.body.type === "getInfo") {
+    console.log('Handling getInfo request:', req.body);
     const { nodeId, nodeLabel, childLabels } = req.body;
     const prompt = buildInfoPrompt(nodeId, nodeLabel, childLabels);
     
@@ -85,6 +86,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
 
       const content = completion.choices[0]?.message?.content;
+      console.log('Generated info content:', content);
       res.status(200).json({ content });
       return;
     } catch (err) {
