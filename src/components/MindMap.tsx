@@ -186,41 +186,63 @@ const MindMap: React.FC<MindMapProps> = ({
       const childMap = getChildMap(edges);
 
       changes.forEach(change => {
-        if (change.type === "position" && change.position && change.dragging) {
-          // Save user-moved position
-          const newPos = {
-            x: change.position.x ?? 0,
-            y: change.position.y ?? 0,
-          };
-          userPositionsRef.current[change.id] = newPos;
+        if (change.type === "position" && change.dragging && change.position) {
+          // Is this the root node?
+          if (change.id === (nodes[0]?.id || "main")) {
+            // Re-layout with new root position!
+            const newX = change.position.x ?? startX;
+            const newY = change.position.y ?? startY;
+            let repositioned = assignStaggeredTreePositions(
+              nodes, edges, change.id, newX, newY, xGap, yGap, staggerY, userPositionsRef.current
+            );
+            repositioned = resolveNodeOverlapsBoundingBox(repositioned, 10, 32);
+            setNodes(repositioned);
+          } else {
+            // Save user-moved position
+            userPositionsRef.current[change.id] = {
+              x: change.position.x ?? 0,
+              y: change.position.y ?? 0,
+            };
 
-          // Get the node's old position
-          const node = nodes.find(n => n.id === change.id);
-          if (!node) return;
+            // Get the node's old position
+            const node = updated.find(n => n.id === change.id);
+            if (!node) return;
 
-          // Calculate movement delta
-          const dx = newPos.x - node.position.x;
-          const dy = newPos.y - node.position.y;
+            // Calculate movement delta
+            const dx = (change.position.x ?? 0) - node.position.x;
+            const dy = (change.position.y ?? 0) - node.position.y;
 
-          // Move all descendants by the same delta
-          const descendantIds = getDescendantIds(change.id, childMap);
-          updated = updated.map(n => {
-            if (descendantIds.includes(n.id)) {
-              const newPos = {
-                x: n.position.x + dx,
-                y: n.position.y + dy
-              };
-              userPositionsRef.current[n.id] = newPos;
-              return { ...n, position: newPos };
-            }
-            return n;
-          });
+            // Move all descendants
+            const descendantIds = getDescendantIds(change.id, childMap);
+            updated = updated.map(n => {
+              if (descendantIds.includes(n.id)) {
+                const newPos = {
+                  x: n.position.x + dx,
+                  y: n.position.y + dy
+                };
+                userPositionsRef.current[n.id] = newPos;
+                return { ...n, position: newPos };
+              }
+              return n;
+            });
+          }
         }
       });
 
-      setNodes(
-        applyNodeChanges(changes, updated)
+      // Only apply changes if not handling root node movement
+      const isRootMove = changes.some(c => 
+        c.type === 'position' && 
+        'dragging' in c && 
+        c.dragging && 
+        'id' in c && 
+        c.id === (nodes[0]?.id || "main")
       );
+
+      if (!isRootMove) {
+        setNodes(
+          applyNodeChanges(changes, updated)
+        );
+      }
     },
     [nodes, edges]
   );
