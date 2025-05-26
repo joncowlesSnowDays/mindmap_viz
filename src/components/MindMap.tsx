@@ -178,6 +178,16 @@ const MindMap: React.FC<MindMapProps> = ({
   const mindMapContextRef = useRef<{ nodes: Node[]; edges: Edge[] }>({ nodes: [], edges: [] });
   const userPositionsRef = useRef<Record<string, {x: number, y: number}>>({});
 
+  // Wrap onNodesChange to track position updates
+  const wrappedOnNodesChange = useCallback((changes: NodeChange[]) => {
+    changes.forEach(change => {
+      if (change.type === 'position' && change.position && change.id) {
+        userPositionsRef.current[change.id] = change.position;
+      }
+    });
+    onNodesChange(changes);
+  }, [onNodesChange]);
+
   // Handle descendant movement after node drag
   const onNodeDragStop = useCallback(
     (_event: any, node: Node) => {
@@ -327,7 +337,7 @@ const MindMap: React.FC<MindMapProps> = ({
       <ReactFlow
         nodes={nodes}
         edges={edges}
-        onNodesChange={onNodesChange}
+        onNodesChange={wrappedOnNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeDragStop={onNodeDragStop}
         onConnect={onConnect}
