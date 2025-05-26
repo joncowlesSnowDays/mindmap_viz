@@ -17,10 +17,17 @@ const MindMapNode: React.FC<NodeProps> = ({ data, isConnectable, selected }) => 
       fontWeight: 500,
       transition: "border 0.12s",
       width: "fit-content",
-      pointerEvents: "auto", // ensure node is interactive
+      pointerEvents: "auto",
     }}
-    onClick={data.onClick} // triggers expansion/API call
+    onClick={(e) => {
+      // Prevent click from interfering with drag
+      if (typeof data.onClick === 'function') {
+        data.onClick(e);
+      }
+    }}
     tabIndex={0}
+    role="button"
+    aria-label={data.label}
   >
     {data.label}
     {/* Handles must not block pointer events */}
