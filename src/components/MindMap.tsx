@@ -35,7 +35,7 @@ const xGap = 20;
 const yGap = 110;
 const staggerY = 32;
 const minNodePadding = 20;
-const minNodeHeight = 26; // Reduced from 32 to 26 for more compact nodes
+const minNodeHeight = 40; // Reduced from 32 to 26 for more compact nodes
 
 // --- Node size estimation ---
 function estimateNodeWidth(label: string): number {
