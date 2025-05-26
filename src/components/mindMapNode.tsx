@@ -16,7 +16,7 @@ const MindMapNode: React.FC<MindMapNodeProps> = ({ data, isConnectable, selected
         borderRadius: 8,
         padding: "4px 16px",
         minWidth: 60,
-        height: 26,
+        height: 40,
         boxShadow: "0 2px 7px rgba(0,0,0,0.09)",
         textAlign: "center",
         userSelect: "none",
