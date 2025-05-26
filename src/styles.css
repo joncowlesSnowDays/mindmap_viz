@@ -3,6 +3,11 @@
   to { transform: rotate(360deg); }
 }
 
+@keyframes slideIn {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
 body {
   font-family: 'Inter', sans-serif;
   background: #f9fafb;

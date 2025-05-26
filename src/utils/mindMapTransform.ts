@@ -55,6 +55,7 @@ export function transformGPTToFlow(gptData: any): { nodes: Node[]; edges: Edge[]
       preview: !!n.preview,
       collapsed: !!n.collapsed,
       ...n,
+      isRoot: n.id === "root",
     },
     position: n.position || { x: Math.random() * 400, y: Math.random() * 300 },
     parentNode: n.parentId || undefined,
