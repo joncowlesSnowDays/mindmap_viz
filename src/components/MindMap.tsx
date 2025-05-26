@@ -18,6 +18,7 @@ import { useGPT } from "../hooks/useGPT.ts";
 import { transformGPTToFlow, mergeExpandedNodesAndEdges } from "../utils/mindMapTransform.ts";
 import Legend from "./Legend.tsx";
 import MindMapNode from "./mindMapNode.tsx";
+import InfoModal from "./InfoModal.tsx";
 
 interface MindMapProps {
   userQuery: string;
