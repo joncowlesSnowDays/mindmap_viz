@@ -15,16 +15,14 @@ const MindMapNode: React.FC<NodeProps> = ({ data, isConnectable, selected }) => 
       userSelect: "none",
       cursor: "grab",
       fontWeight: 500,
-      transition: "border 0.12s",
+      transition: "border 0.12s ease-in-out",
       width: "fit-content",
-      pointerEvents: "auto",
     }}
     tabIndex={0}
     role="button"
     aria-label={data.label}
   >
     {data.label}
-    {/* Handles must not block pointer events */}
     <Handle
       type="source"
       position={Position.Right}
