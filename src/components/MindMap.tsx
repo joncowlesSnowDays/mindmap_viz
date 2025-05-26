@@ -25,7 +25,7 @@ interface MindMapProps {
   automateSignal?: number;
 }
 
-// Layout params (tweak for your design)
+// Layout params (tweak for your designs)
 const fitViewOptions = { padding: 0.18, includeHiddenNodes: true };
 const startX = 400;
 const startY = 40;
