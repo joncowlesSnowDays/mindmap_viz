@@ -94,24 +94,48 @@ function findOpenSpace(
   const baseY = parentNode.position.y + dynamicYGap;
   const parentBoundary = parentNode.position.y + nodeHeight;
   
-  // Calculate horizontal spread with weighted distribution
+  // Calculate initial spread with density awareness
   const totalWidth = siblingCount * (nodeWidth + xGap * 1.2);
-  const weightedOffset = (childIndex - (siblingCount - 1) / 2) * (nodeWidth + xGap);
-  const proposedX = baseX + weightedOffset;
+  const initialSpread = (childIndex - (siblingCount - 1) / 2) * (nodeWidth + xGap);
+  const proposedX = baseX + initialSpread;
 
-  // Define search grid with adaptive radius
-  const maxAttempts = 8;
-  const baseRadius = Math.max(nodeHeight * 2, nodeWidth);
+  // Calculate node density in different regions
+  const regions = {
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0
+  };
+
+  boxes.forEach(box => {
+    const dx = box.x - baseX;
+    const dy = box.y - baseY;
+    if (dx < 0) regions.left++;
+    if (dx > 0) regions.right++;
+    if (dy < 0) regions.top++;
+    if (dy > 0) regions.bottom++;
+  });
+
+  // Adjust search based on density
+  const densityOffset = {
+    x: regions.right > regions.left ? -nodeWidth * 2 : nodeWidth * 2,
+    y: regions.bottom > regions.top ? -nodeHeight * 3 : nodeHeight * 3
+  };
+
+  // Define search grid with adaptive parameters
+  const maxAttempts = 12; // Increased from 8
+  const baseRadius = Math.max(nodeHeight * 3, nodeWidth * 2);
   const positions: Array<{x: number, y: number, score: number}> = [];
 
-  // Spiral search pattern
+  // Enhanced spiral search with density awareness
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const radius = attempt * (nodeHeight / 2);
-    const angleStep = Math.PI / 4;
+    const radius = attempt * (baseRadius / maxAttempts);
+    const angleStep = Math.PI / 6; // More granular angles
     
     for (let angle = 0; angle < Math.PI * 2; angle += angleStep) {
-      const xOffset = Math.cos(angle) * radius;
-      const yOffset = Math.abs(Math.sin(angle) * radius);
+      // Apply density-based offsets to the search pattern
+      const xOffset = Math.cos(angle) * radius + (attempt * densityOffset.x / maxAttempts);
+      const yOffset = Math.abs(Math.sin(angle) * radius) + (attempt * densityOffset.y / maxAttempts);
       const proposedY = baseY + baseStaggerY + yOffset;
 
       // Ensure minimum parent-child separation
@@ -132,17 +156,39 @@ function findOpenSpace(
       });
 
       if (!hasCollision) {
-        // Score based on multiple factors
+        // Enhanced scoring system
         const distanceFromIdeal = Math.sqrt(
           Math.pow(xOffset, 2) + Math.pow(yOffset - baseStaggerY, 2)
         );
+        
+        // Directional penalties based on density
+        const directionalPenalty = 
+          (xOffset > 0 ? regions.right : regions.left) * 0.2 +
+          (yOffset > 0 ? regions.bottom : regions.top) * 0.3;
+        
+        // Score components
         const verticalScore = Math.abs(proposedY - (baseY + baseStaggerY));
         const horizontalScore = Math.abs(xOffset);
+        const densityScore = directionalPenalty * distanceFromIdeal;
+        
+        // Calculate minimum distances to all other nodes
+        const minDistance = Math.min(...boxes.map(box => 
+          Math.sqrt(
+            Math.pow((proposedX + xOffset) - (box.x + box.width/2), 2) +
+            Math.pow(proposedY - (box.y + box.height/2), 2)
+          )
+        ));
+        
+        const spacingBonus = Math.log(minDistance + 1) * 2;
 
         positions.push({
           x: proposedX + xOffset,
           y: proposedY,
-          score: distanceFromIdeal * 0.5 + verticalScore + horizontalScore * 0.7
+          score: distanceFromIdeal * 0.3 + 
+                 verticalScore * 0.4 + 
+                 horizontalScore * 0.5 + 
+                 densityScore -
+                 spacingBonus // Lower score is better, so subtract spacing bonus
         });
       }
     }
@@ -251,8 +297,10 @@ function assignStaggeredTreePositions(
 function resolveNodeOverlapsBoundingBox(
   nodes: Node[],
   minGap = 12,
-  maxIters = 24
+  maxIters = 32 // Increased iterations for better resolution
 ) {
+  // Sort nodes by their vertical position to help with top-down layout
+  nodes.sort((a, b) => a.position.y - b.position.y);
   let boxes = nodes.map(n => {
     const label = n.data?.label || "";
     const w = estimateNodeWidth(label);
