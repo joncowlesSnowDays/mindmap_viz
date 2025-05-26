@@ -34,7 +34,7 @@ const xGap = 20;
 const yGap = 110;
 const staggerY = 32;
 const minNodePadding = 20;
-const minNodeHeight = 32; // Reduced from 48 to 32
+const minNodeHeight = 26; // Reduced from 32 to 26 for more compact nodes
 
 // --- Node size estimation ---
 function estimateNodeWidth(label: string): number {
@@ -92,28 +92,29 @@ function assignStaggeredTreePositions(
     idToNode[id].position = manual ? { ...manual } : { x, y };
     if (!children.length) return;
 
-    // Calculate parent's bottom edge
-    const parentBottom = y + minNodeHeight/2;  // y is center, so add half height
+    // Get the actual parent node position (could be manual or calculated)
+    const parentPos = idToNode[id].position;
+    const parentBottom = parentPos.y + minNodeHeight/2;  // y is center, so add half height
 
     const totalChildrenWidth =
       children.reduce((sum, cid) => sum + nodeWidth(cid), 0) +
       xGap * (children.length - 1);
 
     let left = x - totalChildrenWidth / 2 + nodeWidth(children[0]) / 2;
-    const centerIdx = (children.length - 1) / 2;
     children.forEach((childId, i) => {
       const sign = (i % 2 === 0) ? 1 : -1;
       const offsetIdx = Math.floor((i + 1) / 2);
       const dy = sign * offsetIdx * staggerY;
       const childX = left + nodeWidth(childId) / 2;
       
-      // Ensure child's top edge doesn't go above parent's bottom edge
+      // Calculate child position ensuring it stays below parent
       const baseY = y + yGap;  // Start at standard vertical gap
       const proposedY = baseY + dy;  // Apply stagger
       const childTop = proposedY - minNodeHeight/2;  // Calculate where child's top would be
-      const adjustedY = childTop < parentBottom ? 
-                       parentBottom + minNodeHeight/2 : // If too high, push down to parent bottom
-                       proposedY;  // Otherwise keep proposed position
+      
+      // Force child to stay below parent while preserving relative stagger
+      const minAllowedY = parentBottom + minNodeHeight/2;  // Minimum allowed center position for child
+      const adjustedY = Math.max(proposedY, minAllowedY);
       
       placeSubtree(childId, depth + 1, childX, adjustedY);
       left += nodeWidth(childId) + xGap;
