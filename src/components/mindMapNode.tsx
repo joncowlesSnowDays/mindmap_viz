@@ -16,7 +16,7 @@ const MindMapNode: React.FC<MindMapNodeProps> = ({ data, isConnectable, selected
         borderRadius: 8,
         padding: "4px 16px",
         minWidth: 60,
-        height: 40,
+        height: 30,
         boxShadow: "0 2px 7px rgba(0,0,0,0.09)",
         textAlign: "center",
         userSelect: "none",
@@ -64,7 +64,7 @@ const MindMapNode: React.FC<MindMapNodeProps> = ({ data, isConnectable, selected
             e.currentTarget.style.opacity = "0.6";
           }}
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <circle cx="12" cy="12" r="10" />
             <path d="M12 16v-4" />
             <path d="M12 8h.01" />
