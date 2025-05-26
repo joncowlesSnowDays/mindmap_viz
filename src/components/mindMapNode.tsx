@@ -19,8 +19,8 @@ const MindMapNode: React.FC<NodeProps> = ({ data, isConnectable, selected }) => 
       width: "fit-content",
       pointerEvents: "auto",
     }}
-    onClick={(e) => {
-      // Prevent click from interfering with drag
+    onMouseDown={(e) => {
+      e.stopPropagation();
       if (typeof data.onClick === 'function') {
         data.onClick(e);
       }
