@@ -115,7 +115,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         { role: "system", content: "You are an expert knowledge graph/mind map generator." },
         { role: "user", content: prompt }
       ],
-      response_format: { type: "json_object" },
       max_tokens: 2000,
       temperature: 0.3
     });
