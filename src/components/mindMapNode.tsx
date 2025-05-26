@@ -8,21 +8,22 @@ const MindMapNode: React.FC<NodeProps> = ({ data, isConnectable, selected }) => 
       border: selected ? "2px solid #7c3aed" : "1.5px solid #bbb",
       borderRadius: 12,
       padding: "14px 28px",
-      minWidth: 90,
+      minWidth: 60,
       minHeight: 48,
       boxShadow: "0 2px 7px rgba(0,0,0,0.09)",
       textAlign: "center",
       userSelect: "none",
       cursor: "grab",
       fontWeight: 500,
-      transition: "border 0.12s"
+      transition: "border 0.12s",
+      width: "fit-content",
+      pointerEvents: "auto", // ensure node is interactive
     }}
-    // Allows node to be clickable anywhere for expansion
-    onClick={data.onClick}
-    tabIndex={0} // enables keyboard accessibility if desired
+    onClick={data.onClick} // triggers expansion/API call
+    tabIndex={0}
   >
     {data.label}
-    {/* Invisible handles for connecting edges, don't block clicks/drags */}
+    {/* Handles must not block pointer events */}
     <Handle
       type="source"
       position={Position.Right}

@@ -69,7 +69,7 @@ function assignStaggeredTreePositions(
   rootId: string,
   startX: number = 400,
   startY: number = 40,
-  xGap: number = 70,
+  xGap: number = 40,
   yGap: number = 120,
   staggerY: number = 32,
   userPositions: Record<string, {x: number, y: number}> = {}
