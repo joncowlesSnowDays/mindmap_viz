@@ -497,6 +497,14 @@ const MindMap: React.FC<MindMapProps> = ({
           edges: gptData.edges 
         });
 
+        // Preserve existing node positions before merging
+        const existingPositions = { ...userPositionsRef.current };
+        nodes.forEach(n => {
+          if (!existingPositions[n.id]) {
+            existingPositions[n.id] = { ...n.position };
+          }
+        });
+
         const merged = mergeExpandedNodesAndEdges(nodes, edges, flowNodes, flowEdges, nodeId);
         const mainNodeId = nodes[0]?.id || "main";
 
@@ -510,16 +518,26 @@ const MindMap: React.FC<MindMapProps> = ({
           xGap, 
           yGap, 
           staggerY, 
-          userPositionsRef.current
+          existingPositions  // Use preserved positions
         );
 
-        // Resolve overlaps
-        positionedNodes = resolveNodeOverlapsBoundingBox(positionedNodes, minNodePadding, 32);
+        // Resolve overlaps only for nodes without user positions
+        const nodesToResolve = positionedNodes.filter(n => !existingPositions[n.id]);
+        if (nodesToResolve.length > 0) {
+          const resolvedNewNodes = resolveNodeOverlapsBoundingBox(nodesToResolve, minNodePadding, 32);
+          // Merge back resolved nodes
+          positionedNodes = positionedNodes.map(n => 
+            existingPositions[n.id] ? n : resolvedNewNodes.find(rn => rn.id === n.id) || n
+          );
+        }
 
         // Update state
         setNodes(positionedNodes);
         setEdges(merged.edges);
         mindMapContextRef.current = { nodes: positionedNodes, edges: merged.edges };
+
+        // Update user positions with new layout
+        userPositionsRef.current = existingPositions;
 
         // Fit view after layout
         if (reactFlowInstance) {
