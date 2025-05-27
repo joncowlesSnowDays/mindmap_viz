@@ -3,10 +3,21 @@ import { Handle, NodeProps, Position } from "reactflow";
 
 interface MindMapNodeProps extends NodeProps {
   onInfoClick?: (nodeId: string) => void;
+  onExpandClick?: (nodeId: string) => void;
+  hasChildren?: boolean;
+  isExpanded?: boolean;
+  isNew?: boolean;
 }
 
-const MindMapNode: React.FC<MindMapNodeProps> = ({ data, isConnectable, selected, id }) => {
-  console.log('Node render:', { id, label: data.label, onInfoClick: !!data.onInfoClick });
+const MindMapNode: React.FC<MindMapNodeProps> = ({ 
+  data, 
+  isConnectable, 
+  selected, 
+  id 
+}) => {
+  const hasChildren = data.hasChildren;
+  const isExpanded = data.isExpanded;
+  const isNew = data.isNew;
   
   return (
     <div
@@ -31,46 +42,96 @@ const MindMapNode: React.FC<MindMapNodeProps> = ({ data, isConnectable, selected
         lineHeight: 1.2,
         whiteSpace: "nowrap",
         position: "relative",
+        animation: isNew ? "flash 1s ease-in-out" : "none"
       }}
       tabIndex={0}
       role="button"
       aria-label={data.label}
     >
       <span style={{ flex: 1 }}>{data.label}</span>
-      {!data.isRoot && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            console.log('Info button clicked for node:', id);
-            data.onInfoClick?.(id);
-          }}
-          style={{
-            width: 24,
-            height: 24,
-            padding: 0,
-            border: "none",
-            background: "none",
-            cursor: "pointer",
-            opacity: 0.6,
-            transition: "opacity 0.2s",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.opacity = "1";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.opacity = "0.6";
-          }}
-        >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-            <circle cx="12" cy="12" r="10" />
-            <path d="M12 16v-4" />
-            <path d="M12 8h.01" />
-          </svg>
-        </button>
-      )}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        {!data.isRoot && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              data.onInfoClick?.(id);
+            }}
+            style={{
+              width: 24,
+              height: 24,
+              padding: 0,
+              border: "none",
+              background: "none",
+              cursor: "pointer",
+              opacity: 0.6,
+              transition: "opacity 0.2s",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.opacity = "1";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.opacity = "0.6";
+            }}
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <circle cx="12" cy="12" r="10" />
+              <path d="M12 16v-4" />
+              <path d="M12 8h.01" />
+            </svg>
+          </button>
+        )}
+        {!data.isRoot && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              data.onExpandClick?.(id);
+            }}
+            style={{
+              width: 24,
+              height: 24,
+              padding: 0,
+              border: "none",
+              background: "none",
+              cursor: "pointer",
+              opacity: 0.6,
+              transition: "opacity 0.2s",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.opacity = "1";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.opacity = "0.6";
+            }}
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+              {hasChildren ? (
+                isExpanded ? (
+                  // Minus icon
+                  <path d="M5 12h14" />
+                ) : (
+                  // Plus icon
+                  <>
+                    <path d="M12 5v14" />
+                    <path d="M5 12h14" />
+                  </>
+                )
+              ) : (
+                // Plus icon (for nodes without children)
+                <>
+                  <path d="M12 5v14" />
+                  <path d="M5 12h14" />
+                </>
+              )}
+            </svg>
+          </button>
+        )}
+      </div>
       <Handle
         type="source"
         position={Position.Bottom}

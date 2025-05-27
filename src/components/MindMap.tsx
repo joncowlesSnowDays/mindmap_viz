@@ -463,13 +463,39 @@ const MindMap: React.FC<MindMapProps> = ({
     // eslint-disable-next-line
   }, [triggerUpdate]);
 
-  // --- Node click expand
-  const onNodeClick = useCallback(
-    async (_event, node) => {
-      if (expandedCache.current[node.id]) return;
-      expandedCache.current[node.id] = true;
+  // Handle expand/collapse click
+  const handleExpandClick = useCallback(async (nodeId: string) => {
+    const node = nodes.find(n => n.id === nodeId);
+    if (!node) return;
+
+    const childMap = getChildMap(edges);
+    const hasChildren = childMap[nodeId]?.length > 0;
+    const isExpanded = node.data.isExpanded;
+
+    if (hasChildren) {
+      // Toggle visibility of children
+      const descendantIds = getDescendantIds(nodeId, childMap);
+      setNodes(nodes => 
+        nodes.map(n => ({
+          ...n,
+          hidden: descendantIds.includes(n.id) ? isExpanded : n.hidden,
+          data: {
+            ...n.data,
+            isExpanded: n.id === nodeId ? !isExpanded : n.data.isExpanded
+          }
+        }))
+      );
+    } else {
+      // Load new children
       mindMapContextRef.current = { nodes, edges };
-      const gptData = await queryGPT(node.data.label || node.id, mindMapContextRef.current, node.id);
+      const gptData = await queryGPT(node.data.label || node.id, mindMapContextRef.current, nodeId);
+      if (gptData && gptData.nodes && gptData.edges) {
+        // Mark new nodes with isNew flag for animation
+        const newNodes = gptData.nodes.map(n => ({ ...n, isNew: true }));
+        const { nodes: flowNodes, edges: flowEdges } = transformGPTToFlow({ 
+          nodes: newNodes, 
+          edges: gptData.edges 
+        });
       if (gptData && gptData.nodes && gptData.edges) {
         const { nodes: newNodes, edges: newEdges } = transformGPTToFlow(gptData);
         const merged = mergeExpandedNodesAndEdges(nodes, edges, newNodes, newEdges, node.id);

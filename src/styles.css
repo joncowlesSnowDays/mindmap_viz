@@ -8,6 +8,12 @@
   to { transform: translateX(0); }
 }
 
+@keyframes flash {
+  0% { background: #fff; }
+  30% { background: #e9d5ff; }
+  100% { background: #fff; }
+}
+
 body {
   font-family: 'Inter', sans-serif;
   background: #f9fafb;
