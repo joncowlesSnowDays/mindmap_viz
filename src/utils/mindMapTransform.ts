@@ -37,6 +37,26 @@ function randomColor() {
   return `hsl(${h}, 75%, 75%)`;
 }
 
+// --- Child map ---
+export function getChildMap(edges: Edge[]) {
+  const childMap: Record<string, string[]> = {};
+  edges.forEach((e) => {
+    if (!childMap[e.source]) childMap[e.source] = [];
+    childMap[e.source].push(e.target);
+  });
+  return childMap;
+}
+
+// --- Descendant helper ---
+export function getDescendantIds(nodeId: string, childMap: Record<string, string[]>, acc: string[] = []): string[] {
+  const children = childMap[nodeId] || [];
+  for (const c of children) {
+    acc.push(c);
+    getDescendantIds(c, childMap, acc);
+  }
+  return acc;
+}
+
 // Track colors for each level
 const levelColors: { [key: number]: string } = {};
 
@@ -157,4 +177,44 @@ export function transformGPTToFlow(gptData: any, isNewMindMap: boolean = false):
   }));
 
   return { nodes, edges };
+}
+
+/**
+ * Preserve positions of existing nodes and their descendants.
+ * Returns a map of node IDs to their positions.
+ */
+export function preserveExistingPositions(
+  nodes: Node[],
+  edges: Edge[],
+  existingPositions: Record<string, {x: number, y: number}> = {},
+  nodeId?: string
+): Record<string, {x: number, y: number}> {
+  // Create a new map to store positions
+  const positions = { ...existingPositions };
+  
+  // Get child map for finding descendants
+  const childMap = getChildMap(edges);
+
+  // If a specific node is provided, get its descendants
+  const descendants = nodeId ? getDescendantIds(nodeId, childMap) : [];
+  
+  // Store current positions for all nodes
+  nodes.forEach(n => {
+    // Store position for the current node if it has one
+    if (n.position) {
+      positions[n.id] = { ...n.position };
+    }
+    
+    // If this is a specific node we're expanding, also ensure we store its descendants
+    if (nodeId && n.id === nodeId) {
+      descendants.forEach(descId => {
+        const desc = nodes.find(d => d.id === descId);
+        if (desc) {
+          positions[descId] = { ...desc.position };
+        }
+      });
+    }
+  });
+
+  return positions;
 }

@@ -16,7 +16,13 @@ import ReactFlow, {
 } from "reactflow";
 import "reactflow/dist/style.css";
 import { useGPT } from "../hooks/useGPT.ts";
-import { transformGPTToFlow, mergeExpandedNodesAndEdges } from "../utils/mindMapTransform.ts";
+import { 
+  transformGPTToFlow, 
+  mergeExpandedNodesAndEdges,
+  preserveExistingPositions,
+  getChildMap,
+  getDescendantIds
+} from "../utils/mindMapTransform.ts";
 import Legend from "./Legend.tsx";
 import MindMapNode from "./mindMapNode.tsx";
 import InfoModal from "./InfoModal.tsx";
@@ -46,25 +52,7 @@ function estimateNodeHeight(): number {
   return Math.max(minNodeHeight, 30); 
 }
 
-// --- Child map ---
-function getChildMap(edges: Edge[]) {
-  const childMap: Record<string, string[]> = {};
-  edges.forEach((e) => {
-    if (!childMap[e.source]) childMap[e.source] = [];
-    childMap[e.source].push(e.target);
-  });
-  return childMap;
-}
-
-// --- Descendant helper ---
-function getDescendantIds(nodeId: string, childMap: Record<string, string[]>, acc: string[] = []): string[] {
-  const children = childMap[nodeId] || [];
-  for (const c of children) {
-    acc.push(c);
-    getDescendantIds(c, childMap, acc);
-  }
-  return acc;
-}
+import { getChildMap, getDescendantIds } from '../utils/mindMapTransform';
 
 // --- Space Finding Utilities ---
 function findOpenSpace(
@@ -496,27 +484,8 @@ const MindMap: React.FC<MindMapProps> = ({
         const { nodes: flowNodes, edges: flowEdges } = transformGPTToFlow({ 
           nodes: newNodes, 
           edges: gptData.edges 
-        }, false);          // Preserve existing node positions and colors, including descendants
-          const existingPositions = { ...userPositionsRef.current };
-          const descendants = getDescendantIds(nodeId, getChildMap(edges));
-          
-          // Store positions for all existing nodes and their descendants
-          nodes.forEach(n => {
-            // Store position for any node that doesn't have a stored position yet
-            if (!existingPositions[n.id]) {
-              existingPositions[n.id] = { ...n.position };
-            }
-            
-            // If this is a node we're expanding, also store positions of its descendants
-            if (n.id === nodeId) {
-              descendants.forEach(descId => {
-                const desc = nodes.find(d => d.id === descId);
-                if (desc) {
-                  existingPositions[descId] = { ...desc.position };
-                }
-              });
-            }
-          });
+        }, false);          // Preserve all existing positions using the helper
+        const existingPositions = preserveExistingPositions(nodes, edges, userPositionsRef.current, nodeId);
 
           const merged = mergeExpandedNodesAndEdges(nodes, edges, flowNodes, flowEdges, nodeId);
 
@@ -605,7 +574,7 @@ const MindMap: React.FC<MindMapProps> = ({
             if (n.id === picked.id) {
               descendants.forEach(descId => {
                 const desc = localNodes.find(d => d.id === descId);
-                if (desc) {
+                if desc) {
                   existingPositions[descId] = { ...desc.position };
                 }
               });
