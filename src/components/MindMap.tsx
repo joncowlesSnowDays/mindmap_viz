@@ -38,7 +38,7 @@ interface MindMapProps {
 const fitViewOptions = { padding: 0.18, includeHiddenNodes: true };
 const startX = 400;
 const startY = 40;
-const xGap = 20;
+const xGap = 40; // Increased from 20 to prevent sibling overlap
 const yGap = 110;
 const staggerY = 32;
 const minNodePadding = 20;
@@ -46,7 +46,8 @@ const minNodeHeight = 26;
 
 // --- Node size estimation ---
 function estimateNodeWidth(label: string): number {
-  return Math.max(80, label.length * 8.5 + minNodePadding * 2 + 24);
+  // Add extra buffer for buttons and padding to prevent overlaps
+  return Math.max(80, label.length * 8.5 + minNodePadding * 2 + 40); // Increased from 24 to 40
 }
 function estimateNodeHeight(): number {
   return Math.max(minNodeHeight, 30); 
@@ -59,9 +60,9 @@ function findBulkSpace(
   childrenData: Array<{id: string, width: number, height: number}>,
   minGap: number = minNodePadding
 ): { x: number; y: number; width: number; height: number } {
-  // Calculate total dimensions needed for all children
+  // Calculate total dimensions needed for all children with better spacing
   const totalWidth = childrenData.reduce((sum, child) => sum + child.width, 0) + 
-                    xGap * (childrenData.length - 1);
+                    xGap * Math.max(0, childrenData.length - 1); // Ensure at least 0 gaps
   const maxHeight = Math.max(...childrenData.map(child => child.height));
   
   // Convert existing nodes to bounding boxes for collision checks
@@ -372,6 +373,8 @@ function assignStaggeredTreePositions(
         const childCenterX = currentX + childData.width / 2;
         
         placeSubtree(childId, depth + 1, childCenterX, adjustedY);
+        
+        // Move to next position with proper spacing
         currentX += childData.width + xGap;
       });
     }

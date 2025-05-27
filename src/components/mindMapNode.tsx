@@ -49,7 +49,7 @@ const MindMapNode: React.FC<MindMapNodeProps> = ({
       aria-label={data.label}
     >
       <span style={{ flex: 1 }}>{data.label}</span>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+      <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
         {!data.isRoot && (
           <button
             onClick={(e) => {
@@ -57,9 +57,9 @@ const MindMapNode: React.FC<MindMapNodeProps> = ({
               data.onInfoClick?.(id);
             }}
             style={{
-              width: 32,
-              height: 32,
-              padding: 0,
+              width: 24,
+              height: 24,
+              padding: 2,
               border: "none",
               background: "none",
               cursor: "pointer",
@@ -76,7 +76,7 @@ const MindMapNode: React.FC<MindMapNodeProps> = ({
               e.currentTarget.style.opacity = "0.6";
             }}
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <circle cx="12" cy="12" r="10" />
               <line x1="12" y1="16" x2="12" y2="12" />
               <circle cx="12" cy="8" r="0.5" fill="currentColor" />
@@ -90,9 +90,9 @@ const MindMapNode: React.FC<MindMapNodeProps> = ({
               data.onExpandClick?.(id);
             }}
             style={{
-              width: 32,
-              height: 32,
-              padding: 0,
+              width: 24,
+              height: 24,
+              padding: 2,
               border: "none",
               background: "none",
               cursor: "pointer",
@@ -109,7 +109,7 @@ const MindMapNode: React.FC<MindMapNodeProps> = ({
               e.currentTarget.style.opacity = "0.6";
             }}
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               {hasChildren ? (
                 isExpanded ? (
                   // Minus icon
