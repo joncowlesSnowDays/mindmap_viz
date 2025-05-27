@@ -466,12 +466,23 @@ const MindMap: React.FC<MindMapProps> = ({
     descendants: null
   });
 
-  // Cache child map to avoid recalculation on every position change
+  // Cache child map and descendant relationships to avoid recalculation
   const childMapRef = useRef<Record<string, string[]>>({});
+  const descendantMapRef = useRef<Record<string, Set<string>>>({});
   
-  // Update child map when edges change
+  // Update child map and descendant relationships when edges change
   useEffect(() => {
     childMapRef.current = getChildMap(edges);
+    
+    // Pre-calculate all descendant relationships for fast lookup
+    const descendantMap: Record<string, Set<string>> = {};
+    const nodeIds = [...new Set([...edges.map(e => e.source), ...edges.map(e => e.target)])];
+    
+    nodeIds.forEach(nodeId => {
+      descendantMap[nodeId] = new Set(getDescendantIds(nodeId, childMapRef.current));
+    });
+    
+    descendantMapRef.current = descendantMap;
   }, [edges]);
 
   // Handle ALL node position changes including dragging
@@ -493,11 +504,22 @@ const MindMap: React.FC<MindMapProps> = ({
 
         if (posChanges.length === 0) return newNodes;
 
+        // Create a map for faster node lookup
+        const nodeMap = new Map<string, number>();
+        newNodes.forEach((node, index) => {
+          nodeMap.set(node.id, index);
+        });
+
+        // Batch all position updates to minimize array mutations
+        const positionUpdates = new Map<string, { x: number; y: number }>();
+
         // Process each position change
         posChanges.forEach(change => {
-          const node = newNodes.find(n => n.id === change.id);
-          if (!node || !change.position) return;
+          const nodeIndex = nodeMap.get(change.id);
+          if (nodeIndex === undefined || !change.position) return;
 
+          const node = newNodes[nodeIndex];
+          
           // Calculate the movement delta
           const dx = change.position.x - node.position.x;
           const dy = change.position.y - node.position.y;
@@ -505,23 +527,39 @@ const MindMap: React.FC<MindMapProps> = ({
           // Skip if no actual movement
           if (dx === 0 && dy === 0) return;
 
-          // Get all descendants that need to move with this node (use cached childMap)
-          const descendants = getDescendantIds(change.id, childMapRef.current);
+          // Get all descendants that need to move with this node (use cached descendants)
+          const descendants = descendantMapRef.current[change.id] || new Set();
 
-          // Move the node and all its descendants
+          // Queue position updates for the node and all its descendants
+          positionUpdates.set(change.id, {
+            x: node.position.x + dx,
+            y: node.position.y + dy
+          });
+
+          descendants.forEach(descendantId => {
+            const descendantIndex = nodeMap.get(descendantId);
+            if (descendantIndex !== undefined) {
+              const descendantNode = newNodes[descendantIndex];
+              positionUpdates.set(descendantId, {
+                x: descendantNode.position.x + dx,
+                y: descendantNode.position.y + dy
+              });
+            }
+          });
+        });
+
+        // Apply all position updates in a single pass
+        if (positionUpdates.size > 0) {
           newNodes = newNodes.map(n => {
-            if (n.id === change.id || descendants.includes(n.id)) {
-              const newPos = {
-                x: n.position.x + dx,
-                y: n.position.y + dy
-              };
+            const newPos = positionUpdates.get(n.id);
+            if (newPos) {
               // Store positions immediately during dragging for persistence
               userPositionsRef.current[n.id] = newPos;
               return { ...n, position: newPos };
             }
             return n;
           });
-        });
+        }
 
         return newNodes;
       });
