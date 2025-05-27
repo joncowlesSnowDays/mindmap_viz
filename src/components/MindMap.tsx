@@ -373,67 +373,50 @@ const MindMap: React.FC<MindMapProps> = ({
       setNodes((nds) => {
         const newNodes = applyNodeChanges(changes, nds);
         
-        // Handle position changes (dragging)
-        const positionChanges = changes.filter(
-          (change): change is NodePositionChange => (
-            change.type === 'position' && 
-            'position' in change && 
-            'dragging' in change &&
-            change.dragging === true
-          )
-        );
-        
-        if (positionChanges.length > 0) {
-          // For each moved node, calculate the delta and apply to its children
+        // Find position changes that are from dragging
+        const dragChange = changes.find((change): change is NodePositionChange => {
+          if (change.type !== 'position') return false;
+          if (!('position' in change) || !change.position) return false;
+          if (!('dragging' in change) || change.dragging !== true) return false;
+          return true;
+        });
+
+        // If we found a dragging change
+        if (dragChange?.position && dragChange.id) {
+          const oldNode = nds.find(n => n.id === dragChange.id);
+          if (!oldNode) return newNodes;
+
+          // Calculate movement delta
+          const dx = dragChange.position.x - oldNode.position.x;
+          const dy = dragChange.position.y - oldNode.position.y;
+
+          if (dx === 0 && dy === 0) return newNodes;
+
+          // Store new position
+          userPositionsRef.current[dragChange.id] = dragChange.position;
+
+          // Find all descendants that need to move with the dragged node
           const childMap = getChildMap(edges);
-          const deltas = new Map<string, { dx: number; dy: number }>();
-          
-          // First pass: calculate position deltas for moved nodes
-          positionChanges.forEach(change => {
-            const oldNode = nds.find(n => n.id === change.id);
-            if (oldNode && change.position) {
-              deltas.set(change.id, {
-                dx: change.position.x - oldNode.position.x,
-                dy: change.position.y - oldNode.position.y
-              });
-              // Store user-defined position
-              userPositionsRef.current[change.id] = change.position;
-            }
-          });
-          
-          // Second pass: apply deltas to descendants
-          const updatedNodes = newNodes.map(node => {
-            // Find the nearest dragged ancestor
-            let current = node.id;
-            let deltaToApply: { dx: number; dy: number } | undefined;
-            
-            while (current) {
-              const delta = deltas.get(current);
-              if (delta) {
-                deltaToApply = delta;
-                break;
-              }
-              // Move up to parent
-              const parent = edges.find(e => e.target === current)?.source;
-              if (!parent) break;
-              current = parent;
-            }
-            
-            // Apply ancestor's movement to this node
-            if (deltaToApply) {
-              const newPos = {
-                x: node.position.x + deltaToApply.dx,
-                y: node.position.y + deltaToApply.dy
+          const descendants = getDescendantIds(dragChange.id, childMap);
+
+          // Apply movement to dragged node and all descendants
+          return newNodes.map(node => {
+            if (node.id === dragChange.id || descendants.includes(node.id)) {
+              const newPosition = {
+                x: node.position.x + dx,
+                y: node.position.y + dy
               };
-              userPositionsRef.current[node.id] = newPos;
-              return { ...node, position: newPos };
+              // Store the moved position
+              userPositionsRef.current[node.id] = newPosition;
+              return {
+                ...node,
+                position: newPosition
+              };
             }
             return node;
           });
-          
-          return updatedNodes;
         }
-        
+
         return newNodes;
       });
     },
