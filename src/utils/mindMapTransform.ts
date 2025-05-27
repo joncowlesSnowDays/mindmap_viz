@@ -73,7 +73,7 @@ function generatePastelColor(level: number): string {
 }
 
 // Get or generate color for a specific level
-function getLevelColor(level: number): string {
+export function getLevelColor(level: number): string {
   if (level === 0) return '#ffffff'; // Root is always white
   
   // Always regenerate the color if it doesn't exist for this level
@@ -91,7 +91,7 @@ export function resetLevelColors() {
 }
 
 // Calculate node levels using BFS
-function calculateNodeLevels(nodes: any[], edges: any[]): Map<string, number> {
+export function calculateNodeLevels(nodes: any[], edges: any[]): Map<string, number> {
   const levels = new Map<string, number>();
   const rootNode = nodes.find(n => n.id === 'root');
   if (!rootNode) return levels;
@@ -142,26 +142,34 @@ export function transformGPTToFlow(gptData: any, isNewMindMap: boolean = false):
   const nodeLevels = calculateNodeLevels(gptData.nodes, gptData.edges);
 
   // Map node data to React Flow node format
-  const nodes: Node[] = gptData.nodes.map((n: any) => ({
-    id: n.id,
-    type: "mindMapNode",
-    data: {
-      label: n.label,
-      group: n.group,
-      preview: !!n.preview,
-      collapsed: !!n.collapsed,
-      ...n,
-      isRoot: n.id === "root",
-    },
-    position: n.position || { x: Math.random() * 400, y: Math.random() * 300 },
-    parentNode: n.parentId || undefined,
-    draggable: true,
-    style: {
-      border: "1px solid #e5e7eb",
-      opacity: n.preview ? 0.75 : 1,
-      background: getLevelColor(nodeLevels.get(n.id) || 0),
-    },
-  }));
+  const nodes: Node[] = gptData.nodes.map((n: any) => {
+    const nodeLevel = nodeLevels.get(n.id) || 0;
+    const backgroundColor = getLevelColor(nodeLevel);
+    
+    return {
+      id: n.id,
+      type: "mindMapNode",
+      data: {
+        label: n.label,
+        group: n.group,
+        preview: !!n.preview,
+        collapsed: !!n.collapsed,
+        level: nodeLevel,
+        isNew: !!n.isNew,
+        ...n,
+        isRoot: n.id === "root",
+      },
+      position: n.position || { x: Math.random() * 400, y: Math.random() * 300 },
+      parentNode: n.parentId || undefined,
+      draggable: true,
+      style: {
+        border: "1px solid #e5e7eb",
+        opacity: n.preview ? 0.75 : 1,
+        background: backgroundColor,
+        transition: "all 0.3s ease-in-out",
+      },
+    };
+  });
 
   // Map edges, random color, arrow, and NO LABEL
   const edges: Edge[] = gptData.edges.map((e: any) => ({

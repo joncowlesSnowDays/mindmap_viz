@@ -22,8 +22,7 @@ const MindMapNode: React.FC<MindMapNodeProps> = ({
   return (
     <div
       style={{
-        ...data.style,
-        background: data.isRoot ? "#fff" : data.style?.background || "#fff",
+        background: data.isRoot ? "#fff" : (data.style?.background || "#fff"),
         border: selected ? "2px solid #7c3aed" : "1.5px solid #bbb",
         borderRadius: 12,
         padding: "8px 16px",
@@ -34,7 +33,7 @@ const MindMapNode: React.FC<MindMapNodeProps> = ({
         boxShadow: "0 2px 7px rgba(0,0,0,0.09)",
         userSelect: "none",
         cursor: "grab",
-        transition: "border 0.12s ease-in-out",
+        transition: "all 0.3s ease-in-out",
         width: "fit-content",
         display: "flex",
         alignItems: "center",
