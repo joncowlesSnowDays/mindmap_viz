@@ -53,7 +53,92 @@ function estimateNodeHeight(): number {
   return Math.max(minNodeHeight, 30); 
 }
 
-// --- Bulk Space Finding for Groups ---
+// --- Spatial Grid for Fast Collision Detection ---
+interface SpatialGrid {
+  cellSize: number;
+  grid: Map<string, Set<string>>;
+  nodeBounds: Map<string, BoundingBox>;
+}
+
+interface BoundingBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  id: string;
+}
+
+function createSpatialGrid(nodes: Node[], cellSize: number = 100): SpatialGrid {
+  const grid = new Map<string, Set<string>>();
+  const nodeBounds = new Map<string, BoundingBox>();
+  
+  nodes.forEach(node => {
+    const width = estimateNodeWidth(node.data?.label || "");
+    const height = estimateNodeHeight();
+    const bounds: BoundingBox = {
+      x: node.position.x - width / 2,
+      y: node.position.y - height / 2,
+      width,
+      height,
+      id: node.id
+    };
+    
+    nodeBounds.set(node.id, bounds);
+    
+    // Add to grid cells
+    const minCellX = Math.floor(bounds.x / cellSize);
+    const maxCellX = Math.floor((bounds.x + bounds.width) / cellSize);
+    const minCellY = Math.floor(bounds.y / cellSize);
+    const maxCellY = Math.floor((bounds.y + bounds.height) / cellSize);
+    
+    for (let cellX = minCellX; cellX <= maxCellX; cellX++) {
+      for (let cellY = minCellY; cellY <= maxCellY; cellY++) {
+        const key = `${cellX},${cellY}`;
+        if (!grid.has(key)) {
+          grid.set(key, new Set());
+        }
+        grid.get(key)!.add(node.id);
+      }
+    }
+  });
+  
+  return { cellSize, grid, nodeBounds };
+}
+
+function getGridCandidates(spatialGrid: SpatialGrid, area: BoundingBox): string[] {
+  const { cellSize, grid } = spatialGrid;
+  const candidates = new Set<string>();
+  
+  const minCellX = Math.floor(area.x / cellSize);
+  const maxCellX = Math.floor((area.x + area.width) / cellSize);
+  const minCellY = Math.floor(area.y / cellSize);
+  const maxCellY = Math.floor((area.y + area.height) / cellSize);
+  
+  for (let cellX = minCellX; cellX <= maxCellX; cellX++) {
+    for (let cellY = minCellY; cellY <= maxCellY; cellY++) {
+      const key = `${cellX},${cellY}`;
+      const cellNodes = grid.get(key);
+      if (cellNodes) {
+        cellNodes.forEach(nodeId => candidates.add(nodeId));
+      }
+    }
+  }
+  
+  return Array.from(candidates);
+}
+
+function checkAreaCollision(spatialGrid: SpatialGrid, area: BoundingBox, minGap: number): boolean {
+  const candidates = getGridCandidates(spatialGrid, area);
+  
+  return candidates.some(nodeId => {
+    const nodeBounds = spatialGrid.nodeBounds.get(nodeId);
+    if (!nodeBounds) return false;
+    
+    return checkCollisionWithSpacing(area, nodeBounds, minGap);
+  });
+}
+
+// --- Advanced Bulk Space Finding with Rigorous Collision Detection ---
 function findBulkSpace(
   existingNodes: Node[],
   parentNode: Node,
@@ -62,68 +147,122 @@ function findBulkSpace(
 ): { x: number; y: number; width: number; height: number } {
   // Calculate total dimensions needed for all children with better spacing
   const totalWidth = childrenData.reduce((sum, child) => sum + child.width, 0) + 
-                    xGap * Math.max(0, childrenData.length - 1); // Ensure at least 0 gaps
+                    xGap * Math.max(0, childrenData.length - 1);
   const maxHeight = Math.max(...childrenData.map(child => child.height));
   
-  // Convert existing nodes to bounding boxes for collision checks
-  const boxes = existingNodes.map(n => ({
-    x: n.position.x - estimateNodeWidth(n.data?.label || "") / 2,
-    y: n.position.y - estimateNodeHeight() / 2,
-    width: estimateNodeWidth(n.data?.label || ""),
-    height: estimateNodeHeight(),
-    id: n.id
-  }));
-
+  // Create spatial grid for fast collision detection
+  const spatialGrid = createSpatialGrid(existingNodes);
+  
   // Start search from parent position
   const baseX = parentNode.position.x;
   const dynamicYGap = Math.max(yGap, maxHeight * 1.5);
   const baseY = parentNode.position.y + dynamicYGap;
   
-  // Define search parameters for bulk area
-  const searchRegions = [
-    // Centered below parent (preferred)
-    { x: baseX - totalWidth / 2, y: baseY, priority: 1 },
-    // Left of parent
-    { x: baseX - totalWidth - minGap * 2, y: baseY, priority: 2 },
-    // Right of parent  
-    { x: baseX + minGap * 2, y: baseY, priority: 2 },
-    // Further down, centered
-    { x: baseX - totalWidth / 2, y: baseY + maxHeight + minGap * 2, priority: 3 },
-    // Further down, left
-    { x: baseX - totalWidth - minGap * 3, y: baseY + maxHeight + minGap * 2, priority: 3 },
-    // Further down, right
-    { x: baseX + minGap * 3, y: baseY + maxHeight + minGap * 2, priority: 3 }
+  // Enhanced search strategy with more comprehensive coverage
+  const searchStrategies = [
+    // Primary strategy: Radial search around preferred positions
+    () => {
+      const preferredPositions = [
+        { x: baseX - totalWidth / 2, y: baseY, priority: 1 },
+        { x: baseX - totalWidth - minGap * 3, y: baseY, priority: 2 },
+        { x: baseX + minGap * 3, y: baseY, priority: 2 },
+        { x: baseX - totalWidth / 2, y: baseY + maxHeight + minGap * 3, priority: 3 }
+      ];
+      
+      for (const pos of preferredPositions.sort((a, b) => a.priority - b.priority)) {
+        const area = { x: pos.x, y: pos.y, width: totalWidth, height: maxHeight, id: 'bulk' };
+        if (!checkAreaCollision(spatialGrid, area, minGap)) {
+          return area;
+        }
+      }
+      return null;
+    },
+    
+    // Secondary strategy: Spiral search for open space
+    () => {
+      const maxRadius = 500;
+      const stepSize = 30;
+      const angleStep = Math.PI / 8;
+      
+      for (let radius = stepSize; radius <= maxRadius; radius += stepSize) {
+        for (let angle = 0; angle < Math.PI * 2; angle += angleStep) {
+          const x = baseX + Math.cos(angle) * radius - totalWidth / 2;
+          const y = Math.max(baseY, baseY + Math.sin(angle) * radius);
+          
+          const area = { x, y, width: totalWidth, height: maxHeight, id: 'bulk' };
+          if (!checkAreaCollision(spatialGrid, area, minGap)) {
+            return area;
+          }
+        }
+      }
+      return null;
+    },
+    
+    // Tertiary strategy: Grid-based systematic search
+    () => {
+      const searchWidth = 800;
+      const searchHeight = 600;
+      const gridStep = 40;
+      
+      const startX = baseX - searchWidth / 2;
+      const startY = baseY;
+      
+      const positions: Array<{x: number, y: number, score: number}> = [];
+      
+      for (let x = startX; x < startX + searchWidth; x += gridStep) {
+        for (let y = startY; y < startY + searchHeight; y += gridStep) {
+          const area = { x, y, width: totalWidth, height: maxHeight, id: 'bulk' };
+          
+          if (!checkAreaCollision(spatialGrid, area, minGap)) {
+            // Score based on distance from ideal position
+            const distanceFromIdeal = Math.sqrt(
+              Math.pow(x - (baseX - totalWidth / 2), 2) + 
+              Math.pow(y - baseY, 2)
+            );
+            positions.push({ x, y, score: distanceFromIdeal });
+          }
+        }
+      }
+      
+      if (positions.length > 0) {
+        const best = positions.reduce((a, b) => a.score < b.score ? a : b);
+        return { x: best.x, y: best.y, width: totalWidth, height: maxHeight, id: 'bulk' };
+      }
+      
+      return null;
+    }
   ];
-
-  // Test each search region
-  for (const region of searchRegions.sort((a, b) => a.priority - b.priority)) {
-    const proposedArea = {
-      x: region.x,
-      y: region.y,
-      width: totalWidth,
-      height: maxHeight
-    };
-
-    // Check if this area conflicts with any existing nodes
-    const hasCollision = boxes.some(box => 
-      checkCollisionWithSpacing(proposedArea, box, minGap)
-    );
-
-    if (!hasCollision) {
-      return proposedArea;
+  
+  // Try each strategy in order
+  for (const strategy of searchStrategies) {
+    const result = strategy();
+    if (result) {
+      return result;
     }
   }
-
-  // Fallback: place far below with extra spacing
+  
+  // Final fallback: Force placement with maximum separation
+  const fallbackY = baseY + maxHeight * 3 + minGap * 5;
+  
+  // Find the furthest right node to avoid horizontal overlap
+  let maxRight = baseX + totalWidth / 2;
+  existingNodes.forEach(node => {
+    const nodeWidth = estimateNodeWidth(node.data?.label || "");
+    const nodeRight = node.position.x + nodeWidth / 2;
+    if (nodeRight > maxRight && Math.abs(node.position.y - fallbackY) < maxHeight + minGap) {
+      maxRight = nodeRight + minGap * 2;
+    }
+  });
+  
   return {
-    x: baseX - totalWidth / 2,
-    y: baseY + maxHeight * 2 + minGap * 3,
+    x: Math.max(baseX - totalWidth / 2, maxRight - totalWidth),
+    y: fallbackY,
     width: totalWidth,
     height: maxHeight
   };
 }
 
-// --- Individual Space Finding (Legacy - for backwards compatibility) ---
+// --- Enhanced Individual Space Finding with Rigorous Collision Detection ---
 function findOpenSpace(
   existingNodes: Node[],
   parentNode: Node,
@@ -133,139 +272,178 @@ function findOpenSpace(
   childIndex: number,
   siblingCount: number
 ): { x: number; y: number } {
-  // Convert existing nodes to bounding boxes for collision checks
-  const boxes = existingNodes.map(n => ({
-    x: n.position.x - estimateNodeWidth(n.data?.label || "") / 2,
-    y: n.position.y - nodeHeight / 2,
-    width: estimateNodeWidth(n.data?.label || ""),
-    height: nodeHeight,
-    id: n.id
-  }));
-
+  // Create spatial grid for fast collision detection
+  const spatialGrid = createSpatialGrid(existingNodes);
+  
   // Calculate base position with improved stagger
   const sign = (childIndex % 2 === 0) ? 1 : -1;
   const offsetIdx = Math.floor((childIndex + 1) / 2);
-  const baseStaggerY = sign * offsetIdx * (staggerY * 0.8); // Reduced stagger
+  const baseStaggerY = sign * offsetIdx * (staggerY * 0.8);
 
   // Start from parent's position with dynamic gap
   const baseX = parentNode.position.x;
   const dynamicYGap = Math.max(yGap, nodeHeight * 1.5);
   const baseY = parentNode.position.y + dynamicYGap;
-  const parentBoundary = parentNode.position.y + nodeHeight;
+  const parentBottom = parentNode.position.y + nodeHeight;
   
   // Calculate initial spread with density awareness
   const totalWidth = siblingCount * (nodeWidth + xGap * 1.2);
   const initialSpread = (childIndex - (siblingCount - 1) / 2) * (nodeWidth + xGap);
   const proposedX = baseX + initialSpread;
 
-  // Calculate node density in different regions
-  const regions = {
-    left: 0,
-    right: 0,
-    top: 0,
-    bottom: 0
-  };
-
-  boxes.forEach(box => {
-    const dx = box.x - baseX;
-    const dy = box.y - baseY;
-    if (dx < 0) regions.left++;
-    if (dx > 0) regions.right++;
-    if (dy < 0) regions.top++;
-    if (dy > 0) regions.bottom++;
-  });
-
-  // Adjust search based on density
-  const densityOffset = {
-    x: regions.right > regions.left ? -nodeWidth * 2 : nodeWidth * 2,
-    y: regions.bottom > regions.top ? -nodeHeight * 3 : nodeHeight * 3
-  };
-
-  // Define search grid with adaptive parameters
-  const maxAttempts = 12; // Increased from 8
-  const baseRadius = Math.max(nodeHeight * 3, nodeWidth * 2);
-  const positions: Array<{x: number, y: number, score: number}> = [];
-
-  // Enhanced spiral search with density awareness
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const radius = attempt * (baseRadius / maxAttempts);
-    const angleStep = Math.PI / 6; // More granular angles
-    
-    for (let angle = 0; angle < Math.PI * 2; angle += angleStep) {
-      // Apply density-based offsets to the search pattern
-      const xOffset = Math.cos(angle) * radius + (attempt * densityOffset.x / maxAttempts);
-      const yOffset = Math.abs(Math.sin(angle) * radius) + (attempt * densityOffset.y / maxAttempts);
-      const proposedY = baseY + baseStaggerY + yOffset;
-
-      // Ensure minimum parent-child separation
-      if (proposedY <= parentNode.position.y + nodeHeight + minNodeHeight/2) continue;
-
-      // Position candidate
-      const proposed = {
-        x: proposedX + xOffset - nodeWidth / 2,
-        y: proposedY - nodeHeight / 2,
-        width: nodeWidth,
-        height: nodeHeight
-      };
-
-      // Check for collisions with minimum spacing
-      const hasCollision = boxes.some(box => {
-        const spacing = box.id === parentNode.id ? nodeHeight : minNodePadding;
-        return checkCollisionWithSpacing(proposed, box, spacing);
-      });
-
-      if (!hasCollision) {
-        // Enhanced scoring system
-        const distanceFromIdeal = Math.sqrt(
-          Math.pow(xOffset, 2) + Math.pow(yOffset - baseStaggerY, 2)
-        );
+  // Enhanced search strategies with comprehensive collision detection
+  const searchStrategies = [
+    // Strategy 1: Preferred position around ideal location
+    () => {
+      const preferredPositions = [
+        { x: proposedX, y: baseY + baseStaggerY },
+        { x: proposedX - nodeWidth, y: baseY + baseStaggerY },
+        { x: proposedX + nodeWidth, y: baseY + baseStaggerY },
+        { x: proposedX, y: baseY + baseStaggerY + nodeHeight },
+        { x: proposedX, y: baseY + baseStaggerY - nodeHeight }
+      ];
+      
+      for (const pos of preferredPositions) {
+        if (pos.y <= parentBottom + nodeHeight/2) continue; // Too close to parent
         
-        // Directional penalties based on density
-        const directionalPenalty = 
-          (xOffset > 0 ? regions.right : regions.left) * 0.2 +
-          (yOffset > 0 ? regions.bottom : regions.top) * 0.3;
+        const area: BoundingBox = {
+          x: pos.x - nodeWidth / 2,
+          y: pos.y - nodeHeight / 2,
+          width: nodeWidth,
+          height: nodeHeight,
+          id: 'test'
+        };
         
-        // Score components
-        const verticalScore = Math.abs(proposedY - (baseY + baseStaggerY));
-        const horizontalScore = Math.abs(xOffset);
-        const densityScore = directionalPenalty * distanceFromIdeal;
-        
-        // Calculate minimum distances to all other nodes
-        const minDistance = Math.min(...boxes.map(box => 
-          Math.sqrt(
-            Math.pow((proposedX + xOffset) - (box.x + box.width/2), 2) +
-            Math.pow(proposedY - (box.y + box.height/2), 2)
-          )
-        ));
-        
-        const spacingBonus = Math.log(minDistance + 1) * 2;
-
-        positions.push({
-          x: proposedX + xOffset,
-          y: proposedY,
-          score: distanceFromIdeal * 0.3 + 
-                 verticalScore * 0.4 + 
-                 horizontalScore * 0.5 + 
-                 densityScore -
-                 spacingBonus // Lower score is better, so subtract spacing bonus
-        });
+        if (!checkAreaCollision(spatialGrid, area, minNodePadding)) {
+          return { x: pos.x, y: pos.y };
+        }
       }
+      return null;
+    },
+    
+    // Strategy 2: Spiral search from ideal position
+    () => {
+      const maxRadius = 300;
+      const stepSize = 25;
+      const angleStep = Math.PI / 12;
+      
+      for (let radius = stepSize; radius <= maxRadius; radius += stepSize) {
+        const positions: Array<{x: number, y: number, score: number}> = [];
+        
+        for (let angle = 0; angle < Math.PI * 2; angle += angleStep) {
+          const x = proposedX + Math.cos(angle) * radius;
+          const y = Math.max(baseY + baseStaggerY, baseY + Math.abs(Math.sin(angle)) * radius);
+          
+          if (y <= parentBottom + nodeHeight/2) continue;
+          
+          const area: BoundingBox = {
+            x: x - nodeWidth / 2,
+            y: y - nodeHeight / 2,
+            width: nodeWidth,
+            height: nodeHeight,
+            id: 'test'
+          };
+          
+          if (!checkAreaCollision(spatialGrid, area, minNodePadding)) {
+            const distanceFromIdeal = Math.sqrt(
+              Math.pow(x - proposedX, 2) + Math.pow(y - (baseY + baseStaggerY), 2)
+            );
+            positions.push({ x, y, score: distanceFromIdeal });
+          }
+        }
+        
+        if (positions.length > 0) {
+          const best = positions.reduce((a, b) => a.score < b.score ? a : b);
+          return { x: best.x, y: best.y };
+        }
+      }
+      return null;
+    },
+    
+    // Strategy 3: Grid-based systematic search with density awareness
+    () => {
+      const searchWidth = 600;
+      const searchHeight = 400;
+      const gridStep = 20;
+      
+      const startX = proposedX - searchWidth / 2;
+      const startY = baseY + baseStaggerY;
+      
+      // Calculate density map to avoid crowded areas
+      const densityMap = new Map<string, number>();
+      existingNodes.forEach(node => {
+        const cellX = Math.floor(node.position.x / 50);
+        const cellY = Math.floor(node.position.y / 50);
+        for (let dx = -1; dx <= 1; dx++) {
+          for (let dy = -1; dy <= 1; dy++) {
+            const key = `${cellX + dx},${cellY + dy}`;
+            densityMap.set(key, (densityMap.get(key) || 0) + 1);
+          }
+        }
+      });
+      
+      const positions: Array<{x: number, y: number, score: number}> = [];
+      
+      for (let x = startX; x < startX + searchWidth; x += gridStep) {
+        for (let y = startY; y < startY + searchHeight; y += gridStep) {
+          if (y <= parentBottom + nodeHeight/2) continue;
+          
+          const area: BoundingBox = {
+            x: x - nodeWidth / 2,
+            y: y - nodeHeight / 2,
+            width: nodeWidth,
+            height: nodeHeight,
+            id: 'test'
+          };
+          
+          if (!checkAreaCollision(spatialGrid, area, minNodePadding)) {
+            // Calculate score based on multiple factors
+            const distanceFromIdeal = Math.sqrt(
+              Math.pow(x - proposedX, 2) + Math.pow(y - (baseY + baseStaggerY), 2)
+            );
+            
+            // Density penalty
+            const densityKey = `${Math.floor(x / 50)},${Math.floor(y / 50)}`;
+            const densityPenalty = (densityMap.get(densityKey) || 0) * 20;
+            
+            // Prefer positions closer to siblings but not too close
+            const siblingDistance = Math.min(...existingNodes.map(node => 
+              Math.sqrt(Math.pow(x - node.position.x, 2) + Math.pow(y - node.position.y, 2))
+            ));
+            const spacingBonus = Math.min(50, Math.max(0, siblingDistance - 100));
+            
+            const score = distanceFromIdeal + densityPenalty - spacingBonus;
+            positions.push({ x, y, score });
+          }
+        }
+      }
+      
+      if (positions.length > 0) {
+        const best = positions.reduce((a, b) => a.score < b.score ? a : b);
+        return { x: best.x, y: best.y };
+      }
+      
+      return null;
     }
-
-    // Early exit if we found good positions
-    if (positions.length >= 3) break;
+  ];
+  
+  // Try each strategy in order
+  for (const strategy of searchStrategies) {
+    const result = strategy();
+    if (result) {
+      return result;
+    }
   }
 
-  // Pick the best position considering multiple factors
-  if (positions.length > 0) {
-    const best = positions.reduce((a, b) => a.score < b.score ? a : b);
-    return { x: best.x, y: best.y };
-  }
-
-  // Fallback with increased vertical offset if no space found
+  // Final fallback with guaranteed clear space
+  const fallbackY = Math.max(
+    baseY + baseStaggerY + nodeHeight * 3,
+    Math.max(...existingNodes.map(n => n.position.y)) + nodeHeight * 2
+  );
+  
   return { 
     x: proposedX,
-    y: baseY + baseStaggerY + nodeHeight * 2
+    y: fallbackY
   };
 }
 
@@ -276,6 +454,67 @@ function checkCollisionWithSpacing(a: any, b: any, spacing: number = minNodePadd
     a.y + a.height + spacing < b.y ||
     b.y + b.height + spacing < a.y
   );
+}
+
+// --- Debug and Validation Functions ---
+function validateNodePositions(nodes: Node[], minGap: number = minNodePadding): {
+  hasOverlaps: boolean;
+  overlapCount: number;
+  overlappingPairs: Array<{nodeA: string, nodeB: string, overlap: {x: number, y: number}}>;
+} {
+  const overlappingPairs: Array<{nodeA: string, nodeB: string, overlap: {x: number, y: number}}> = [];
+  
+  for (let i = 0; i < nodes.length; i++) {
+    for (let j = i + 1; j < nodes.length; j++) {
+      const nodeA = nodes[i];
+      const nodeB = nodes[j];
+      
+      const widthA = estimateNodeWidth(nodeA.data?.label || "");
+      const heightA = estimateNodeHeight();
+      const widthB = estimateNodeWidth(nodeB.data?.label || "");
+      const heightB = estimateNodeHeight();
+      
+      const boxA = {
+        x: nodeA.position.x - widthA / 2,
+        y: nodeA.position.y - heightA / 2,
+        width: widthA,
+        height: heightA
+      };
+      
+      const boxB = {
+        x: nodeB.position.x - widthB / 2,
+        y: nodeB.position.y - heightB / 2,
+        width: widthB,
+        height: heightB
+      };
+      
+      if (checkCollisionWithSpacing(boxA, boxB, minGap)) {
+        const xOverlap = Math.max(0, Math.min(boxA.x + boxA.width, boxB.x + boxB.width) - Math.max(boxA.x, boxB.x));
+        const yOverlap = Math.max(0, Math.min(boxA.y + boxA.height, boxB.y + boxB.height) - Math.max(boxA.y, boxB.y));
+        
+        overlappingPairs.push({
+          nodeA: nodeA.id,
+          nodeB: nodeB.id,
+          overlap: { x: xOverlap, y: yOverlap }
+        });
+      }
+    }
+  }
+  
+  return {
+    hasOverlaps: overlappingPairs.length > 0,
+    overlapCount: overlappingPairs.length,
+    overlappingPairs
+  };
+}
+
+// --- Performance Monitoring ---
+function measureLayoutPerformance<T>(operation: () => T, operationName: string): T {
+  const start = performance.now();
+  const result = operation();
+  const end = performance.now();
+  console.log(`${operationName} took ${(end - start).toFixed(2)}ms`);
+  return result;
 }
 
 // --- Staggered Tree with manual position override and space finding ---
@@ -386,14 +625,20 @@ function assignStaggeredTreePositions(
   return Object.values(idToNode);
 }
 
-// --- Overlap Resolver (Bounding Box Collision) ---
+// --- Advanced Overlap Resolver with Force-Directed Layout ---
 function resolveNodeOverlapsBoundingBox(
   nodes: Node[],
   minGap = 12,
-  maxIters = 32 // Increased iterations for better resolution
+  maxIters = 50 // Increased iterations for better resolution
 ) {
+  if (nodes.length === 0) return nodes;
+  
+  // Create spatial grid for efficient collision detection
+  let spatialGrid = createSpatialGrid(nodes, 80);
+  
   // Sort nodes by their vertical position to help with top-down layout
   nodes.sort((a, b) => a.position.y - b.position.y);
+  
   let boxes = nodes.map(n => {
     const label = n.data?.label || "";
     const w = estimateNodeWidth(label);
@@ -406,38 +651,141 @@ function resolveNodeOverlapsBoundingBox(
         w, h,
         centerX: n.position.x,
         centerY: n.position.y,
-      }
+      },
+      _originalPos: { x: n.position.x, y: n.position.y }, // Store original position
+      _moved: false
     };
   });
 
+  // Track which nodes have been moved to prefer minimal disruption
+  let totalMoved = 0;
+  const maxMovedNodes = Math.ceil(boxes.length * 0.3); // Limit disruption to 30% of nodes
+
   for (let iter = 0; iter < maxIters; ++iter) {
     let moved = false;
+    const forces = new Map<string, {x: number, y: number, count: number}>();
+    
+    // Initialize forces
+    boxes.forEach(box => {
+      forces.set(box.id, { x: 0, y: 0, count: 0 });
+    });
+
+    // Calculate repulsion forces between overlapping nodes
     for (let i = 0; i < boxes.length; ++i) {
       for (let j = i + 1; j < boxes.length; ++j) {
-        const a = boxes[i]._box, b = boxes[j]._box;
+        const a = boxes[i]._box;
+        const b = boxes[j]._box;
+        
         const xOverlap = Math.max(0, Math.min(a.x + a.w + minGap, b.x + b.w + minGap) - Math.max(a.x, b.x));
         const yOverlap = Math.max(0, Math.min(a.y + a.h + minGap, b.y + b.h + minGap) - Math.max(a.y, b.y));
+        
         if (xOverlap > minGap && yOverlap > minGap) {
-          moved = true;
+          // Calculate repulsion force
+          const overlapArea = xOverlap * yOverlap;
+          const forceStrength = Math.sqrt(overlapArea) * 0.5;
+          
+          // Determine separation direction (prefer horizontal separation for mind maps)
+          let fx = 0, fy = 0;
+          
           if (xOverlap > yOverlap) {
-            const push = (yOverlap - minGap) / 2 + 1;
-            boxes[i].position.y -= push;
-            boxes[j].position.y += push;
+            // Separate vertically
+            fy = (yOverlap - minGap) / 2 + forceStrength;
+            if (a.y < b.y) {
+              fy = -fy; // Move 'a' up, 'b' down
+            }
           } else {
-            const push = (xOverlap - minGap) / 2 + 1;
-            boxes[i].position.x -= push;
-            boxes[j].position.x += push;
+            // Separate horizontally
+            fx = (xOverlap - minGap) / 2 + forceStrength;
+            if (a.x < b.x) {
+              fx = -fx; // Move 'a' left, 'b' right
+            }
           }
-          boxes[i]._box.x = boxes[i].position.x - a.w / 2;
-          boxes[j]._box.x = boxes[j].position.x - b.w / 2;
-          boxes[i]._box.y = boxes[i].position.y - a.h / 2;
-          boxes[j]._box.y = boxes[j].position.y - b.h / 2;
+          
+          // Apply forces
+          const forceA = forces.get(boxes[i].id)!;
+          const forceB = forces.get(boxes[j].id)!;
+          
+          forceA.x -= fx;
+          forceA.y -= fy;
+          forceA.count++;
+          
+          forceB.x += fx;
+          forceB.y += fy;
+          forceB.count++;
         }
       }
     }
+
+    // Apply forces with dampening and constraints
+    boxes.forEach((box, index) => {
+      const force = forces.get(box.id)!;
+      
+      if (force.count > 0 && totalMoved < maxMovedNodes && !box._moved) {
+        // Dampen force application
+        const damping = 0.6;
+        const maxMove = 30; // Limit single-iteration movement
+        
+        let dx = Math.max(-maxMove, Math.min(maxMove, force.x * damping / force.count));
+        let dy = Math.max(-maxMove, Math.min(maxMove, force.y * damping / force.count));
+        
+        // Prefer vertical movement for mind maps (maintain horizontal relationships)
+        if (Math.abs(dx) > Math.abs(dy)) {
+          dx *= 0.7; // Reduce horizontal movement
+          dy *= 1.3; // Emphasize vertical movement
+        }
+        
+        // Apply movement
+        boxes[index].position.x += dx;
+        boxes[index].position.y += dy;
+        
+        // Update bounding box
+        boxes[index]._box.x = boxes[index].position.x - box._box.w / 2;
+        boxes[index]._box.y = boxes[index].position.y - box._box.h / 2;
+        boxes[index]._box.centerX = boxes[index].position.x;
+        boxes[index]._box.centerY = boxes[index].position.y;
+        
+        if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
+          moved = true;
+          if (!box._moved) {
+            box._moved = true;
+            totalMoved++;
+          }
+        }
+      }
+    });
+
+    // Early termination if no significant movement
     if (!moved) break;
+    
+    // Update spatial grid every few iterations for performance
+    if (iter % 5 === 0) {
+      spatialGrid = createSpatialGrid(boxes, 80);
+    }
   }
-  return boxes.map(({ _box, ...node }) => node);
+
+  // Final validation pass - ensure no overlaps remain
+  for (let i = 0; i < boxes.length; ++i) {
+    for (let j = i + 1; j < boxes.length; ++j) {
+      const a = boxes[i]._box;
+      const b = boxes[j]._box;
+      
+      const xOverlap = Math.max(0, Math.min(a.x + a.w + minGap, b.x + b.w + minGap) - Math.max(a.x, b.x));
+      const yOverlap = Math.max(0, Math.min(a.y + a.h + minGap, b.y + b.h + minGap) - Math.max(a.y, b.y));
+      
+      if (xOverlap > minGap && yOverlap > minGap) {
+        // Force final separation
+        const pushY = (yOverlap - minGap) / 2 + 5;
+        boxes[i].position.y -= pushY;
+        boxes[j].position.y += pushY;
+        
+        // Update bounding boxes
+        boxes[i]._box.y = boxes[i].position.y - a.h / 2;
+        boxes[j]._box.y = boxes[j].position.y - b.h / 2;
+      }
+    }
+  }
+
+  return boxes.map(({ _box, _originalPos, _moved, ...node }) => node);
 }
 
 const nodeTypes = { mindMapNode: MindMapNode };
@@ -583,10 +931,27 @@ const MindMap: React.FC<MindMapProps> = ({
         // Pass true for isNewMindMap since this is a fresh mind map
         const { nodes: baseNodes, edges: baseEdges } = transformGPTToFlow(gptData, true);
         const mainNodeId = baseNodes[0]?.id || "main";
-        let positionedNodes = assignStaggeredTreePositions(
-          baseNodes, baseEdges, mainNodeId, startX, startY, xGap, yGap, staggerY, userPositionsRef.current
+        let positionedNodes = measureLayoutPerformance(
+          () => assignStaggeredTreePositions(
+            baseNodes, baseEdges, mainNodeId, startX, startY, xGap, yGap, staggerY, userPositionsRef.current
+          ),
+          "Initial mind map positioning"
         );
-        positionedNodes = resolveNodeOverlapsBoundingBox(positionedNodes, 10, 32);
+        
+        positionedNodes = measureLayoutPerformance(
+          () => resolveNodeOverlapsBoundingBox(positionedNodes, minNodePadding, 40),
+          "Initial mind map overlap resolution"
+        );
+        
+        // Validate initial layout
+        const validation = validateNodePositions(positionedNodes, minNodePadding);
+        if (validation.hasOverlaps) {
+          console.warn(`Initial layout has ${validation.overlapCount} overlapping pairs, applying additional cleanup`);
+          positionedNodes = resolveNodeOverlapsBoundingBox(positionedNodes, minNodePadding, 30);
+        } else {
+          console.log("✅ Initial mind map layout validation passed");
+        }
+        
         setNodes(positionedNodes);
         setEdges(baseEdges);
         mindMapContextRef.current = { nodes: positionedNodes, edges: baseEdges };
@@ -651,27 +1016,47 @@ const MindMap: React.FC<MindMapProps> = ({
         const finalMerged = mergeExpandedNodesAndEdges(nodes, edges, flowNodes, flowEdges, nodeId);
 
         // Calculate new layout while preserving positions
-        const mainNodeId = nodes[0]?.id || "main";
-        let positionedNodes = assignStaggeredTreePositions(
-          finalMerged.nodes, 
-          finalMerged.edges, 
-          mainNodeId, 
-          startX, 
-          startY, 
-          xGap, 
-          yGap, 
-          staggerY, 
-          existingPositions
+        const mainNodeId = finalMerged.nodes[0]?.id || "main";
+        let positionedNodes = measureLayoutPerformance(
+          () => assignStaggeredTreePositions(
+            finalMerged.nodes, 
+            finalMerged.edges, 
+            mainNodeId, 
+            startX, 
+            startY, 
+            xGap, 
+            yGap, 
+            staggerY, 
+            existingPositions
+          ),
+          "Initial node positioning"
         );
 
-        // Resolve overlaps only for nodes without user positions
+        // Resolve overlaps with enhanced collision detection
         const nodesToResolve = positionedNodes.filter(n => !existingPositions[n.id]);
         if (nodesToResolve.length > 0) {
-          const resolvedNewNodes = resolveNodeOverlapsBoundingBox(nodesToResolve, minNodePadding, 32);
+          const resolvedNewNodes = measureLayoutPerformance(
+            () => resolveNodeOverlapsBoundingBox(nodesToResolve, minNodePadding, 50),
+            "Overlap resolution"
+          );
           // Merge back resolved nodes
           positionedNodes = positionedNodes.map(n => 
             existingPositions[n.id] ? n : resolvedNewNodes.find(rn => rn.id === n.id) || n
           );
+        }
+
+        // Validate final layout
+        const validation = validateNodePositions(positionedNodes, minNodePadding);
+        if (validation.hasOverlaps) {
+          console.warn(`Layout validation found ${validation.overlapCount} overlapping node pairs:`, validation.overlappingPairs);
+          
+          // Apply final overlap resolution to all nodes if needed
+          positionedNodes = measureLayoutPerformance(
+            () => resolveNodeOverlapsBoundingBox(positionedNodes, minNodePadding, 25),
+            "Final overlap cleanup"
+          );
+        } else {
+          console.log("✅ Layout validation passed - no overlaps detected");
         }
 
         // Update state
@@ -755,26 +1140,39 @@ const MindMap: React.FC<MindMapProps> = ({
 
           // Calculate new layout while preserving positions
           const mainNodeId = merged.nodes[0]?.id || "main";
-          let positionedNodes = assignStaggeredTreePositions(
-            merged.nodes, 
-            merged.edges, 
-            mainNodeId, 
-            startX, 
-            startY, 
-            xGap, 
-            yGap, 
-            staggerY, 
-            existingPositions
+          let positionedNodes = measureLayoutPerformance(
+            () => assignStaggeredTreePositions(
+              merged.nodes, 
+              merged.edges, 
+              mainNodeId, 
+              startX, 
+              startY, 
+              xGap, 
+              yGap, 
+              staggerY, 
+              existingPositions
+            ),
+            `Automation layout ${i + 1}`
           );
 
           // Resolve overlaps only for nodes without user positions
           const nodesToResolve = positionedNodes.filter(n => !existingPositions[n.id]);
           if (nodesToResolve.length > 0) {
-            const resolvedNewNodes = resolveNodeOverlapsBoundingBox(nodesToResolve, minNodePadding, 32);
+            const resolvedNewNodes = measureLayoutPerformance(
+              () => resolveNodeOverlapsBoundingBox(nodesToResolve, minNodePadding, 40),
+              `Automation overlap resolution ${i + 1}`
+            );
             // Merge back resolved nodes
             positionedNodes = positionedNodes.map(n => 
               existingPositions[n.id] ? n : resolvedNewNodes.find(rn => rn.id === n.id) || n
             );
+          }
+
+          // Quick validation for automation
+          const validation = validateNodePositions(positionedNodes, minNodePadding);
+          if (validation.hasOverlaps && validation.overlapCount > 3) {
+            console.warn(`Automation step ${i + 1}: ${validation.overlapCount} overlaps detected, applying cleanup`);
+            positionedNodes = resolveNodeOverlapsBoundingBox(positionedNodes, minNodePadding, 20);
           }
 
           // Update user positions with new layout
