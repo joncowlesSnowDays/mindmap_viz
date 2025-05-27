@@ -66,15 +66,22 @@ function generatePastelColor(level: number): string {
   const goldenRatio = 0.618033988749895;
   // Use level as a seed to generate consistent hue
   const hue = ((level * goldenRatio) % 1) * 360;
-  return `hsl(${hue}, 85%, 85%)`; // More saturated, slightly darker for better visibility
+  // Adjust saturation and lightness based on level for better distinction
+  const saturation = 85 - (level * 5); // Decrease saturation slightly for deeper levels
+  const lightness = 85 + (level * 2); // Increase lightness slightly for deeper levels
+  return `hsl(${hue}, ${saturation}%, ${lightness}%)`; 
 }
 
 // Get or generate color for a specific level
 function getLevelColor(level: number): string {
   if (level === 0) return '#ffffff'; // Root is always white
+  
+  // Always regenerate the color if it doesn't exist for this level
   if (!levelColors[level]) {
     levelColors[level] = generatePastelColor(level);
   }
+  
+  // Return the cached color for this level
   return levelColors[level];
 }
 
