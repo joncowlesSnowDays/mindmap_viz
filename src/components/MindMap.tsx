@@ -570,13 +570,50 @@ const MindMap: React.FC<MindMapProps> = ({
           picked.id
         );
         if (gptData && gptData.nodes && gptData.edges) {
-          const { nodes: newNodes, edges: newEdges } = transformGPTToFlow(gptData);
-          const merged = mergeExpandedNodesAndEdges(localNodes, localEdges, newNodes, newEdges, picked.id);
+          // Mark new nodes with isNew flag for animation
+          const newNodes = gptData.nodes.map(n => ({ ...n, isNew: true }));
+          const { nodes: flowNodes, edges: flowEdges } = transformGPTToFlow({ 
+            nodes: newNodes, 
+            edges: gptData.edges 
+          });
+
+          // Preserve existing node positions and colors
+          const existingPositions = { ...userPositionsRef.current };
+          localNodes.forEach(n => {
+            if (!existingPositions[n.id]) {
+              existingPositions[n.id] = { ...n.position };
+            }
+          });
+
+          const merged = mergeExpandedNodesAndEdges(localNodes, localEdges, flowNodes, flowEdges, picked.id);
+
+          // Calculate new layout while preserving positions
           const mainNodeId = merged.nodes[0]?.id || "main";
           let positionedNodes = assignStaggeredTreePositions(
-            merged.nodes, merged.edges, mainNodeId, startX, startY, xGap, yGap, staggerY, userPositionsRef.current
+            merged.nodes, 
+            merged.edges, 
+            mainNodeId, 
+            startX, 
+            startY, 
+            xGap, 
+            yGap, 
+            staggerY, 
+            existingPositions
           );
-          positionedNodes = resolveNodeOverlapsBoundingBox(positionedNodes, 10, 32);
+
+          // Resolve overlaps only for nodes without user positions
+          const nodesToResolve = positionedNodes.filter(n => !existingPositions[n.id]);
+          if (nodesToResolve.length > 0) {
+            const resolvedNewNodes = resolveNodeOverlapsBoundingBox(nodesToResolve, minNodePadding, 32);
+            // Merge back resolved nodes
+            positionedNodes = positionedNodes.map(n => 
+              existingPositions[n.id] ? n : resolvedNewNodes.find(rn => rn.id === n.id) || n
+            );
+          }
+
+          // Update user positions with new layout
+          userPositionsRef.current = existingPositions;
+
           localNodes = positionedNodes;
           localEdges = merged.edges;
           setNodes(positionedNodes);
