@@ -672,7 +672,8 @@ const MindMap: React.FC<MindMapProps> = ({
             onExpandClick: handleExpandClick,
             hasChildren: getChildMap(edges)[node.id]?.length > 0,
             isExpanded: node.data.isExpanded,
-            isRoot: node.id === nodes[0]?.id
+            isRoot: node.id === nodes[0]?.id,
+            style: node.style // Pass the style to the node data
           }
         }))}
         edges={edges}

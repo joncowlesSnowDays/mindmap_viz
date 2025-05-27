@@ -63,7 +63,7 @@ const levelColors: { [key: number]: string } = {};
 // Generate a light pastel color
 function generatePastelColor(): string {
   const hue = Math.floor(Math.random() * 360);
-  return `hsl(${hue}, 70%, 90%)`; // High lightness for pastel effect
+  return `hsl(${hue}, 85%, 85%)`; // More saturated, slightly darker for better visibility
 }
 
 // Get or generate color for a specific level
