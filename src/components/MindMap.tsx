@@ -42,7 +42,7 @@ const xGap = 20;
 const yGap = 110;
 const staggerY = 32;
 const minNodePadding = 20;
-const minNodeHeight = 26; // Reduced from 32 to 26 for more compact nodes
+const minNodeHeight = 26;
 
 // --- Node size estimation ---
 function estimateNodeWidth(label: string): number {
@@ -51,8 +51,6 @@ function estimateNodeWidth(label: string): number {
 function estimateNodeHeight(): number {
   return Math.max(minNodeHeight, 30); 
 }
-
-import { getChildMap, getDescendantIds } from '../utils/mindMapTransform';
 
 // --- Space Finding Utilities ---
 function findOpenSpace(
@@ -574,7 +572,7 @@ const MindMap: React.FC<MindMapProps> = ({
             if (n.id === picked.id) {
               descendants.forEach(descId => {
                 const desc = localNodes.find(d => d.id === descId);
-                if desc) {
+                if (desc) {
                   existingPositions[descId] = { ...desc.position };
                 }
               });
