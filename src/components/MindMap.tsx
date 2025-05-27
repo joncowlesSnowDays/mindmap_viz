@@ -382,67 +382,50 @@ const MindMap: React.FC<MindMapProps> = ({
   const onNodesChange = useCallback<OnNodesChange>(
     (changes: NodeChange[]) => {
       setNodes((nds) => {
-        // First apply any non-drag changes
-        let newNodes = applyNodeChanges(changes, nds);
-        
-        // Look for drag start/end
-        const dragStart = changes.find(
-          c => c.type === 'position' && 'dragging' in c && c.dragging === true && !dragCache.current.dragging
-        );
-        const dragEnd = changes.find(
-          c => c.type === 'position' && 'dragging' in c && c.dragging === false && dragCache.current.dragging
-        );
-        
-        // Handle drag start
-        if (dragStart && 'id' in dragStart) {
-          dragCache.current.dragging = true;
-          dragCache.current.nodeId = dragStart.id;
-          // Calculate descendants only once at drag start
-          dragCache.current.descendants = getDescendantIds(dragStart.id, getChildMap(edges));
-        }
-        
-        // Handle drag end
-        if (dragEnd) {
-          dragCache.current.dragging = false;
-          dragCache.current.nodeId = null;
-          dragCache.current.descendants = null;
-        }
+        // Apply any non-position changes first
+        let newNodes = [...nds];
+        changes.forEach(change => {
+          if (change.type !== 'position') {
+            newNodes = applyNodeChanges([change], newNodes);
+          }
+        });
 
-        // Handle active dragging
-        const dragChange = changes.find(
-          (c): c is NodePositionChange => 
-            c.type === 'position' && 
-            'position' in c && 
-            c.position !== undefined && 
-            'dragging' in c && 
-            c.dragging === true
-        );
+        // Filter to valid position changes only
+        const posChanges = changes.filter((c): c is NodePositionChange => {
+          return c.type === 'position' && 'position' in c && c.position !== undefined;
+        });
 
-        if (dragChange?.position && dragCache.current.dragging) {
-          const draggedNode = nds.find(n => n.id === dragChange.id);
-          if (!draggedNode) return newNodes;
+        // Process each position change
+        posChanges.forEach(change => {
+          const node = newNodes.find(n => n.id === change.id);
+          if (!node || !change.position) return;
 
-          const dx = dragChange.position.x - draggedNode.position.x;
-          const dy = dragChange.position.y - draggedNode.position.y;
+          // Calculate the movement delta
+          const dx = change.position.x - node.position.x;
+          const dy = change.position.y - node.position.y;
 
-          if (dx === 0 && dy === 0) return newNodes;
+          // Skip if no actual movement
+          if (dx === 0 && dy === 0) return;
 
-          // Update positions efficiently using cached descendants
-          newNodes = newNodes.map(node => {
-            if (node.id === dragChange.id || dragCache.current.descendants?.includes(node.id)) {
-              const newPosition = {
-                x: node.position.x + dx,
-                y: node.position.y + dy
+          // Get all descendants that need to move with this node
+          const descendants = getDescendantIds(change.id, getChildMap(edges));
+
+          // Move the node and all its descendants
+          newNodes = newNodes.map(n => {
+            if (n.id === change.id || descendants.includes(n.id)) {
+              const newPos = {
+                x: n.position.x + dx,
+                y: n.position.y + dy
               };
-              // Only store final positions
-              if (!dragCache.current.dragging) {
-                userPositionsRef.current[node.id] = newPosition;
+              // Only store positions when drag ends
+              if ('dragging' in change && !change.dragging) {
+                userPositionsRef.current[n.id] = newPos;
               }
-              return { ...node, position: newPosition };
+              return { ...n, position: newPos };
             }
-            return node;
+            return n;
           });
-        }
+        });
 
         return newNodes;
       });
