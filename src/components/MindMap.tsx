@@ -367,51 +367,78 @@ const MindMap: React.FC<MindMapProps> = ({
   const mindMapContextRef = useRef<{ nodes: Node[]; edges: Edge[] }>({ nodes: [], edges: [] });
   const userPositionsRef = useRef<Record<string, {x: number, y: number}>>({});
 
+  // Cache for dragging state
+  const dragCache = useRef<{
+    dragging: boolean;
+    nodeId: string | null;
+    descendants: string[] | null;
+  }>({
+    dragging: false,
+    nodeId: null,
+    descendants: null
+  });
+
   // Handle ALL node position changes including dragging
   const onNodesChange = useCallback<OnNodesChange>(
     (changes: NodeChange[]) => {
       setNodes((nds) => {
-        const newNodes = applyNodeChanges(changes, nds);
+        // First apply any non-drag changes
+        let newNodes = applyNodeChanges(changes, nds);
         
-        // Find position changes that are from dragging
-        const dragChange = changes.find((change): change is NodePositionChange => {
-          if (change.type !== 'position') return false;
-          if (!('position' in change) || !change.position) return false;
-          if (!('dragging' in change) || change.dragging !== true) return false;
-          return true;
-        });
+        // Look for drag start/end
+        const dragStart = changes.find(
+          c => c.type === 'position' && 'dragging' in c && c.dragging === true && !dragCache.current.dragging
+        );
+        const dragEnd = changes.find(
+          c => c.type === 'position' && 'dragging' in c && c.dragging === false && dragCache.current.dragging
+        );
+        
+        // Handle drag start
+        if (dragStart && 'id' in dragStart) {
+          dragCache.current.dragging = true;
+          dragCache.current.nodeId = dragStart.id;
+          // Calculate descendants only once at drag start
+          dragCache.current.descendants = getDescendantIds(dragStart.id, getChildMap(edges));
+        }
+        
+        // Handle drag end
+        if (dragEnd) {
+          dragCache.current.dragging = false;
+          dragCache.current.nodeId = null;
+          dragCache.current.descendants = null;
+        }
 
-        // If we found a dragging change
-        if (dragChange?.position && dragChange.id) {
-          const oldNode = nds.find(n => n.id === dragChange.id);
-          if (!oldNode) return newNodes;
+        // Handle active dragging
+        const dragChange = changes.find(
+          (c): c is NodePositionChange => 
+            c.type === 'position' && 
+            'position' in c && 
+            c.position !== undefined && 
+            'dragging' in c && 
+            c.dragging === true
+        );
 
-          // Calculate movement delta
-          const dx = dragChange.position.x - oldNode.position.x;
-          const dy = dragChange.position.y - oldNode.position.y;
+        if (dragChange?.position && dragCache.current.dragging) {
+          const draggedNode = nds.find(n => n.id === dragChange.id);
+          if (!draggedNode) return newNodes;
+
+          const dx = dragChange.position.x - draggedNode.position.x;
+          const dy = dragChange.position.y - draggedNode.position.y;
 
           if (dx === 0 && dy === 0) return newNodes;
 
-          // Store new position
-          userPositionsRef.current[dragChange.id] = dragChange.position;
-
-          // Find all descendants that need to move with the dragged node
-          const childMap = getChildMap(edges);
-          const descendants = getDescendantIds(dragChange.id, childMap);
-
-          // Apply movement to dragged node and all descendants
-          return newNodes.map(node => {
-            if (node.id === dragChange.id || descendants.includes(node.id)) {
+          // Update positions efficiently using cached descendants
+          newNodes = newNodes.map(node => {
+            if (node.id === dragChange.id || dragCache.current.descendants?.includes(node.id)) {
               const newPosition = {
                 x: node.position.x + dx,
                 y: node.position.y + dy
               };
-              // Store the moved position
-              userPositionsRef.current[node.id] = newPosition;
-              return {
-                ...node,
-                position: newPosition
-              };
+              // Only store final positions
+              if (!dragCache.current.dragging) {
+                userPositionsRef.current[node.id] = newPosition;
+              }
+              return { ...node, position: newPosition };
             }
             return node;
           });
