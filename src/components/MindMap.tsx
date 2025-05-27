@@ -369,70 +369,89 @@ const MindMap: React.FC<MindMapProps> = ({
   // Handle ALL node position changes including dragging
   const onNodesChange = useCallback<OnNodesChange>(
     (changes: NodeChange[]) => {
-      let updated = [...nodes];
-      const childMap = getChildMap(edges);
-
-      changes.forEach(change => {
-        if (change.type === "position" && change.dragging && change.position) {
-          // Is this the root node?
-          if (change.id === (nodes[0]?.id || "main")) {
-            // Re-layout with new root position!
-            const newX = change.position.x ?? startX;
-            const newY = change.position.y ?? startY;
-            let repositioned = assignStaggeredTreePositions(
-              nodes, edges, change.id, newX, newY, xGap, yGap, staggerY, userPositionsRef.current
-            );
-            repositioned = resolveNodeOverlapsBoundingBox(repositioned, 10, 32);
-            setNodes(repositioned);
-          } else {
-            // Save user-moved position
-            userPositionsRef.current[change.id] = {
-              x: change.position.x ?? 0,
-              y: change.position.y ?? 0,
-            };
-
-            // Get the node's old position
-            const node = updated.find(n => n.id === change.id);
-            if (!node) return;
-
-            // Calculate movement delta
-            const dx = (change.position.x ?? 0) - node.position.x;
-            const dy = (change.position.y ?? 0) - node.position.y;
-
-            // Move all descendants
-            const descendantIds = getDescendantIds(change.id, childMap);
-            updated = updated.map(n => {
-              if (descendantIds.includes(n.id)) {
-                const newPos = {
-                  x: n.position.x + dx,
-                  y: n.position.y + dy
-                };
-                userPositionsRef.current[n.id] = newPos;
-                return { ...n, position: newPos };
-              }
-              return n;
-            });
+      setNodes((nds) => {
+        const newNodes = applyNodeChanges(changes, nds);
+        // Store user-defined positions
+        changes.forEach(change => {
+          if (change.type === 'position' && change.position) {
+            userPositionsRef.current[change.id] = change.position;
           }
-        }
+        });
+        return newNodes;
       });
-
-      // Only apply changes if not handling root node movement
-      const isRootMove = changes.some(c => 
-        c.type === 'position' && 
-        'dragging' in c && 
-        c.dragging && 
-        'id' in c && 
-        c.id === (nodes[0]?.id || "main")
-      );
-
-      if (!isRootMove) {
-        setNodes(
-          applyNodeChanges(changes, updated)
-        );
-      }
     },
-    [nodes, edges]
+    []
   );
+
+  // Handle expand/collapse click
+  const handleExpandClick = useCallback(async (nodeId: string) => {
+    const node = nodes.find(n => n.id === nodeId);
+    if (!node) return;
+
+    const childMap = getChildMap(edges);
+    const hasChildren = childMap[nodeId]?.length > 0;
+    const isExpanded = node.data.isExpanded;
+
+    if (hasChildren) {
+      // Toggle visibility of existing children
+      const descendantIds = getDescendantIds(nodeId, childMap);
+      setNodes(nodes => 
+        nodes.map(n => ({
+          ...n,
+          hidden: descendantIds.includes(n.id) ? !isExpanded : n.hidden,
+          data: {
+            ...n.data,
+            isExpanded: n.id === nodeId ? !isExpanded : n.data.isExpanded
+          },
+          ...(n.id === nodeId ? { className: 'flash-node' } : {})
+        }))
+      );
+    } else {
+      // Load new children from GPT
+      const mindMapContext = { nodes, edges };
+      const gptData = await queryGPT(userQuery, mindMapContext, nodeId);
+
+      if (gptData && gptData.nodes && gptData.edges) {
+        // Transform and merge new nodes
+        const newFlowData = transformGPTToFlow(gptData);
+        const { nodes: mergedNodes, edges: mergedEdges } = mergeExpandedNodesAndEdges(
+          nodes,
+          edges,
+          newFlowData.nodes,
+          newFlowData.edges,
+          nodeId
+        );
+
+        // Add flash animation to parent and new nodes
+        const newNodeIds = newFlowData.nodes.map(n => n.id);
+        const nodesWithFlash = mergedNodes.map(n => ({
+          ...n,
+          className: n.id === nodeId || newNodeIds.includes(n.id) ? 'flash-node' : undefined,
+          data: {
+            ...n.data,
+            isExpanded: n.id === nodeId ? true : n.data.isExpanded
+          }
+        }));
+
+        // Update positions
+        const nodesWithLayout = assignStaggeredTreePositions(
+          nodesWithFlash,
+          mergedEdges,
+          nodes[0].id,
+          startX,
+          startY,
+          xGap,
+          yGap,
+          staggerY,
+          userPositionsRef.current
+        );
+
+        setNodes(nodesWithLayout);
+        setEdges(mergedEdges);
+        reactFlowInstance?.fitView(fitViewOptions);
+      }
+    }
+  }, [nodes, edges, queryGPT, reactFlowInstance, userQuery]);
 
   // --- Initial Mind Map
   useEffect(() => {
@@ -606,6 +625,9 @@ const MindMap: React.FC<MindMapProps> = ({
             ...node.data,
             label: node.data.label,
             onInfoClick: handleInfoClick,
+            onExpandClick: handleExpandClick,
+            hasChildren: getChildMap(edges)[node.id]?.length > 0,
+            isExpanded: node.data.isExpanded,
             isRoot: node.id === nodes[0]?.id
           }
         }))}
@@ -613,7 +635,6 @@ const MindMap: React.FC<MindMapProps> = ({
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
-        onNodeClick={onNodeClick}
         fitView
         fitViewOptions={fitViewOptions}
         attributionPosition="bottom-right"
