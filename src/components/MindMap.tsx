@@ -383,95 +383,6 @@ const MindMap: React.FC<MindMapProps> = ({
     []
   );
 
-  // Handle expand/collapse click
-  const handleExpandClick = useCallback(async (nodeId: string) => {
-    const node = nodes.find(n => n.id === nodeId);
-    if (!node) return;
-
-    const childMap = getChildMap(edges);
-    const hasChildren = childMap[nodeId]?.length > 0;
-    const isExpanded = node.data.isExpanded;
-
-    if (hasChildren) {
-      // Toggle visibility of existing children
-      const descendantIds = getDescendantIds(nodeId, childMap);
-      setNodes(nodes => nodes.map(n => ({
-        ...n,
-        hidden: n.id === nodeId ? false :
-                descendantIds.includes(n.id) ? isExpanded : n.hidden
-      })));
-      
-      // Update expansion state
-      setNodes(nodes => nodes.map(n => n.id === nodeId ? {
-        ...n,
-        data: { ...n.data, isExpanded: !isExpanded }
-      } : n));
-      
-    } else {
-      // Fetch new children from GPT
-      const response = await queryGPT(userQuery, mindMapContextRef.current, nodeId);
-      
-      if (response && response.nodes && response.nodes.length > 0) {
-        const { nodes: newNodes, edges: newEdges } = transformGPTToFlow(response);
-        
-        // Mark new nodes with animation flag
-        const nodesWithAnimation = newNodes.map(n => ({
-          ...n,
-          data: { ...n.data, isNew: true }
-        }));
-        
-        // Merge with existing nodes and update state
-        const { nodes: mergedNodes, edges: mergedEdges } = mergeExpandedNodesAndEdges(
-          nodes,
-          edges,
-          nodesWithAnimation,
-          newEdges,
-          nodeId
-        );
-
-        // Update node expansion state
-        const updatedNodes = mergedNodes.map(n => n.id === nodeId ? {
-          ...n,
-          data: { ...n.data, isExpanded: true }
-        } : n);
-
-        setNodes(updatedNodes);
-        setEdges(mergedEdges);
-
-        // Update positions
-        if (reactFlowInstance) {
-          const layoutedElements = assignStaggeredTreePositions(
-            updatedNodes,
-            mergedEdges,
-            "root",
-            startX,
-            startY,
-            xGap,
-            yGap,
-            staggerY,
-            userPositionsRef.current
-          );
-          
-          // Resolve any remaining overlaps
-          const nonOverlappingNodes = resolveNodeOverlapsBoundingBox(
-            layoutedElements,
-            minNodePadding,
-            32
-          );
-
-          setNodes(nonOverlappingNodes);
-          reactFlowInstance.fitView(fitViewOptions);
-        }
-
-        // Update context for future expansions
-        mindMapContextRef.current = {
-          nodes: updatedNodes,
-          edges: mergedEdges
-        };
-      }
-    }
-  }, [nodes, edges, queryGPT, reactFlowInstance, userQuery]);
-
   // --- Initial Mind Map
   useEffect(() => {
     const updateMindMap = async () => {
@@ -527,6 +438,7 @@ const MindMap: React.FC<MindMapProps> = ({
       // Load new children
       mindMapContextRef.current = { nodes, edges };
       const gptData = await queryGPT(node.data.label || node.id, mindMapContextRef.current, nodeId);
+      
       if (gptData && gptData.nodes && gptData.edges) {
         // Mark new nodes with isNew flag for animation
         const newNodes = gptData.nodes.map(n => ({ ...n, isNew: true }));
@@ -534,24 +446,38 @@ const MindMap: React.FC<MindMapProps> = ({
           nodes: newNodes, 
           edges: gptData.edges 
         });
-      if (gptData && gptData.nodes && gptData.edges) {
-        const { nodes: newNodes, edges: newEdges } = transformGPTToFlow(gptData);
-        const merged = mergeExpandedNodesAndEdges(nodes, edges, newNodes, newEdges, node.id);
+
+        const merged = mergeExpandedNodesAndEdges(nodes, edges, flowNodes, flowEdges, nodeId);
         const mainNodeId = nodes[0]?.id || "main";
+
+        // Update node positions
         let positionedNodes = assignStaggeredTreePositions(
-          merged.nodes, merged.edges, mainNodeId, startX, startY, xGap, yGap, staggerY, userPositionsRef.current
+          merged.nodes, 
+          merged.edges, 
+          mainNodeId, 
+          startX, 
+          startY, 
+          xGap, 
+          yGap, 
+          staggerY, 
+          userPositionsRef.current
         );
-        positionedNodes = resolveNodeOverlapsBoundingBox(positionedNodes, 10, 32);
+
+        // Resolve overlaps
+        positionedNodes = resolveNodeOverlapsBoundingBox(positionedNodes, minNodePadding, 32);
+
+        // Update state
         setNodes(positionedNodes);
         setEdges(merged.edges);
         mindMapContextRef.current = { nodes: positionedNodes, edges: merged.edges };
+
+        // Fit view after layout
         if (reactFlowInstance) {
           setTimeout(() => reactFlowInstance.fitView(fitViewOptions), 100);
         }
       }
-    },
-    [nodes, edges, queryGPT, reactFlowInstance]
-  );
+    }
+  }, [nodes, edges, queryGPT, reactFlowInstance]);
 
   // --- AUTOMATION LOGIC ---
   useEffect(() => {
