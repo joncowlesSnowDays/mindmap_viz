@@ -395,60 +395,79 @@ const MindMap: React.FC<MindMapProps> = ({
     if (hasChildren) {
       // Toggle visibility of existing children
       const descendantIds = getDescendantIds(nodeId, childMap);
-      setNodes(nodes => 
-        nodes.map(n => ({
-          ...n,
-          hidden: descendantIds.includes(n.id) ? !isExpanded : n.hidden,
-          data: {
-            ...n.data,
-            isExpanded: n.id === nodeId ? !isExpanded : n.data.isExpanded
-          },
-          ...(n.id === nodeId ? { className: 'flash-node' } : {})
-        }))
-      );
+      setNodes(nodes => nodes.map(n => ({
+        ...n,
+        hidden: n.id === nodeId ? false :
+                descendantIds.includes(n.id) ? isExpanded : n.hidden
+      })));
+      
+      // Update expansion state
+      setNodes(nodes => nodes.map(n => n.id === nodeId ? {
+        ...n,
+        data: { ...n.data, isExpanded: !isExpanded }
+      } : n));
+      
     } else {
-      // Load new children from GPT
-      const mindMapContext = { nodes, edges };
-      const gptData = await queryGPT(userQuery, mindMapContext, nodeId);
-
-      if (gptData && gptData.nodes && gptData.edges) {
-        // Transform and merge new nodes
-        const newFlowData = transformGPTToFlow(gptData);
+      // Fetch new children from GPT
+      const response = await queryGPT(userQuery, mindMapContextRef.current, nodeId);
+      
+      if (response && response.nodes && response.nodes.length > 0) {
+        const { nodes: newNodes, edges: newEdges } = transformGPTToFlow(response);
+        
+        // Mark new nodes with animation flag
+        const nodesWithAnimation = newNodes.map(n => ({
+          ...n,
+          data: { ...n.data, isNew: true }
+        }));
+        
+        // Merge with existing nodes and update state
         const { nodes: mergedNodes, edges: mergedEdges } = mergeExpandedNodesAndEdges(
           nodes,
           edges,
-          newFlowData.nodes,
-          newFlowData.edges,
+          nodesWithAnimation,
+          newEdges,
           nodeId
         );
 
-        // Add flash animation to parent and new nodes
-        const newNodeIds = newFlowData.nodes.map(n => n.id);
-        const nodesWithFlash = mergedNodes.map(n => ({
+        // Update node expansion state
+        const updatedNodes = mergedNodes.map(n => n.id === nodeId ? {
           ...n,
-          className: n.id === nodeId || newNodeIds.includes(n.id) ? 'flash-node' : undefined,
-          data: {
-            ...n.data,
-            isExpanded: n.id === nodeId ? true : n.data.isExpanded
-          }
-        }));
+          data: { ...n.data, isExpanded: true }
+        } : n);
+
+        setNodes(updatedNodes);
+        setEdges(mergedEdges);
 
         // Update positions
-        const nodesWithLayout = assignStaggeredTreePositions(
-          nodesWithFlash,
-          mergedEdges,
-          nodes[0].id,
-          startX,
-          startY,
-          xGap,
-          yGap,
-          staggerY,
-          userPositionsRef.current
-        );
+        if (reactFlowInstance) {
+          const layoutedElements = assignStaggeredTreePositions(
+            updatedNodes,
+            mergedEdges,
+            "root",
+            startX,
+            startY,
+            xGap,
+            yGap,
+            staggerY,
+            userPositionsRef.current
+          );
+          
+          // Resolve any remaining overlaps
+          const nonOverlappingNodes = resolveNodeOverlapsBoundingBox(
+            layoutedElements,
+            minNodePadding,
+            32
+          );
 
-        setNodes(nodesWithLayout);
-        setEdges(mergedEdges);
-        reactFlowInstance?.fitView(fitViewOptions);
+          setNodes(nonOverlappingNodes);
+          reactFlowInstance.fitView(fitViewOptions);
+        }
+
+        // Update context for future expansions
+        mindMapContextRef.current = {
+          nodes: updatedNodes,
+          edges: mergedEdges
+        };
       }
     }
   }, [nodes, edges, queryGPT, reactFlowInstance, userQuery]);
