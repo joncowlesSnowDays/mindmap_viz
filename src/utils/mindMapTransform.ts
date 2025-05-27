@@ -60,9 +60,12 @@ export function getDescendantIds(nodeId: string, childMap: Record<string, string
 // Track colors for each level
 const levelColors: { [key: number]: string } = {};
 
-// Generate a light pastel color
-function generatePastelColor(): string {
-  const hue = Math.floor(Math.random() * 360);
+// Generate a consistent pastel color based on level
+function generatePastelColor(level: number): string {
+  // Use golden ratio for even color distribution
+  const goldenRatio = 0.618033988749895;
+  // Use level as a seed to generate consistent hue
+  const hue = ((level * goldenRatio) % 1) * 360;
   return `hsl(${hue}, 85%, 85%)`; // More saturated, slightly darker for better visibility
 }
 
@@ -70,7 +73,7 @@ function generatePastelColor(): string {
 function getLevelColor(level: number): string {
   if (level === 0) return '#ffffff'; // Root is always white
   if (!levelColors[level]) {
-    levelColors[level] = generatePastelColor();
+    levelColors[level] = generatePastelColor(level);
   }
   return levelColors[level];
 }
