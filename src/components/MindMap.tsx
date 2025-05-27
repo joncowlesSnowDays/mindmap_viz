@@ -466,6 +466,14 @@ const MindMap: React.FC<MindMapProps> = ({
     descendants: null
   });
 
+  // Cache child map to avoid recalculation on every position change
+  const childMapRef = useRef<Record<string, string[]>>({});
+  
+  // Update child map when edges change
+  useEffect(() => {
+    childMapRef.current = getChildMap(edges);
+  }, [edges]);
+
   // Handle ALL node position changes including dragging
   const onNodesChange = useCallback<OnNodesChange>(
     (changes: NodeChange[]) => {
@@ -483,6 +491,8 @@ const MindMap: React.FC<MindMapProps> = ({
           return c.type === 'position' && 'position' in c && c.position !== undefined;
         });
 
+        if (posChanges.length === 0) return newNodes;
+
         // Process each position change
         posChanges.forEach(change => {
           const node = newNodes.find(n => n.id === change.id);
@@ -495,8 +505,8 @@ const MindMap: React.FC<MindMapProps> = ({
           // Skip if no actual movement
           if (dx === 0 && dy === 0) return;
 
-          // Get all descendants that need to move with this node
-          const descendants = getDescendantIds(change.id, getChildMap(edges));
+          // Get all descendants that need to move with this node (use cached childMap)
+          const descendants = getDescendantIds(change.id, childMapRef.current);
 
           // Move the node and all its descendants
           newNodes = newNodes.map(n => {
@@ -505,10 +515,8 @@ const MindMap: React.FC<MindMapProps> = ({
                 x: n.position.x + dx,
                 y: n.position.y + dy
               };
-              // Only store positions when drag ends
-              if ('dragging' in change && !change.dragging) {
-                userPositionsRef.current[n.id] = newPos;
-              }
+              // Store positions immediately during dragging for persistence
+              userPositionsRef.current[n.id] = newPos;
               return { ...n, position: newPos };
             }
             return n;
@@ -518,7 +526,7 @@ const MindMap: React.FC<MindMapProps> = ({
         return newNodes;
       });
     },
-    [edges]
+    [] // No dependencies needed since we use refs
   );
 
   // --- Initial Mind Map
