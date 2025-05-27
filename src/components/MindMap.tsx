@@ -497,7 +497,7 @@ const MindMap: React.FC<MindMapProps> = ({
           edges: gptData.edges 
         });
 
-        // Preserve existing node positions before merging
+        // Preserve existing node positions and colors
         const existingPositions = { ...userPositionsRef.current };
         nodes.forEach(n => {
           if (!existingPositions[n.id]) {
@@ -506,9 +506,9 @@ const MindMap: React.FC<MindMapProps> = ({
         });
 
         const merged = mergeExpandedNodesAndEdges(nodes, edges, flowNodes, flowEdges, nodeId);
-        const mainNodeId = nodes[0]?.id || "main";
 
-        // Update node positions
+        // Calculate new layout while preserving positions
+        const mainNodeId = nodes[0]?.id || "main";
         let positionedNodes = assignStaggeredTreePositions(
           merged.nodes, 
           merged.edges, 
@@ -518,7 +518,7 @@ const MindMap: React.FC<MindMapProps> = ({
           xGap, 
           yGap, 
           staggerY, 
-          existingPositions  // Use preserved positions
+          existingPositions
         );
 
         // Resolve overlaps only for nodes without user positions

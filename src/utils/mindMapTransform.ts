@@ -37,13 +37,77 @@ function randomColor() {
   return `hsl(${h}, 75%, 75%)`;
 }
 
+// Track colors for each level
+const levelColors: { [key: number]: string } = {};
+
+// Generate a light pastel color
+function generatePastelColor(): string {
+  const hue = Math.floor(Math.random() * 360);
+  return `hsl(${hue}, 70%, 90%)`; // High lightness for pastel effect
+}
+
+// Get or generate color for a specific level
+function getLevelColor(level: number): string {
+  if (level === 0) return '#ffffff'; // Root is always white
+  if (!levelColors[level]) {
+    levelColors[level] = generatePastelColor();
+  }
+  return levelColors[level];
+}
+
+// Reset level colors (useful when creating a new mind map)
+export function resetLevelColors() {
+  Object.keys(levelColors).forEach(key => delete levelColors[Number(key)]);
+}
+
+// Calculate node levels using BFS
+function calculateNodeLevels(nodes: any[], edges: any[]): Map<string, number> {
+  const levels = new Map<string, number>();
+  const rootNode = nodes.find(n => n.id === 'root');
+  if (!rootNode) return levels;
+
+  // Initialize with root
+  levels.set(rootNode.id, 0);
+  const queue = [rootNode.id];
+  
+  // Create adjacency list for faster lookups
+  const adjacencyList = new Map<string, string[]>();
+  edges.forEach(edge => {
+    if (!adjacencyList.has(edge.source)) {
+      adjacencyList.set(edge.source, []);
+    }
+    adjacencyList.get(edge.source)?.push(edge.target);
+  });
+
+  // BFS to assign levels
+  while (queue.length > 0) {
+    const currentId = queue.shift()!;
+    const currentLevel = levels.get(currentId)!;
+    
+    // Process children
+    const children = adjacencyList.get(currentId) || [];
+    children.forEach(childId => {
+      if (!levels.has(childId)) {
+        levels.set(childId, currentLevel + 1);
+        queue.push(childId);
+      }
+    });
+  }
+
+  return levels;
+}
+
 /*
  * Transforms GPT data to React Flow nodes and edges, with preview node style and arrow markers.
- * - Edges get a random pastel color and arrow
- * - No edge label for cleaner appearance
  */
 export function transformGPTToFlow(gptData: any): { nodes: Node[]; edges: Edge[] } {
   if (!gptData || !gptData.nodes) return { nodes: [], edges: [] };
+
+  // Reset colors when creating a new mind map
+  resetLevelColors();
+
+  // Calculate levels for all nodes
+  const nodeLevels = calculateNodeLevels(gptData.nodes, gptData.edges);
 
   // Map node data to React Flow node format
   const nodes: Node[] = gptData.nodes.map((n: any) => ({
@@ -63,7 +127,7 @@ export function transformGPTToFlow(gptData: any): { nodes: Node[]; edges: Edge[]
     style: {
       border: "1px solid #e5e7eb",
       opacity: n.preview ? 0.75 : 1,
-      background: n.preview ? "#f9f5ff" : "#fff",
+      background: getLevelColor(nodeLevels.get(n.id) || 0),
     },
   }));
 
