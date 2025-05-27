@@ -492,16 +492,18 @@ const MindMap: React.FC<MindMapProps> = ({
         const { nodes: flowNodes, edges: flowEdges } = transformGPTToFlow({ 
           nodes: newNodes, 
           edges: gptData.edges 
-        }, false, fullContext.nodes, fullContext.edges);          // Preserve all existing positions using the helper
+        }, false, fullContext.nodes, fullContext.edges);
+        
+        // Preserve all existing positions using the helper
         const existingPositions = preserveExistingPositions(nodes, edges, userPositionsRef.current, nodeId);
 
-          const merged = mergeExpandedNodesAndEdges(nodes, edges, flowNodes, flowEdges, nodeId);
+        const finalMerged = mergeExpandedNodesAndEdges(nodes, edges, flowNodes, flowEdges, nodeId);
 
         // Calculate new layout while preserving positions
         const mainNodeId = nodes[0]?.id || "main";
         let positionedNodes = assignStaggeredTreePositions(
-          merged.nodes, 
-          merged.edges, 
+          finalMerged.nodes, 
+          finalMerged.edges, 
           mainNodeId, 
           startX, 
           startY, 
@@ -523,8 +525,8 @@ const MindMap: React.FC<MindMapProps> = ({
 
         // Update state
         setNodes(positionedNodes);
-        setEdges(merged.edges);
-        mindMapContextRef.current = { nodes: positionedNodes, edges: merged.edges };
+        setEdges(finalMerged.edges);
+        mindMapContextRef.current = { nodes: positionedNodes, edges: finalMerged.edges };
 
         // Update user positions with new layout
         userPositionsRef.current = existingPositions;
