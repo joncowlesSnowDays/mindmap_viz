@@ -11,6 +11,7 @@ import ReactFlow, {
   Connection,
   OnNodesChange,
   NodeChange,
+  NodePositionChange,
   applyNodeChanges,
 } from "reactflow";
 import "reactflow/dist/style.css";
@@ -371,16 +372,72 @@ const MindMap: React.FC<MindMapProps> = ({
     (changes: NodeChange[]) => {
       setNodes((nds) => {
         const newNodes = applyNodeChanges(changes, nds);
-        // Store user-defined positions
-        changes.forEach(change => {
-          if (change.type === 'position' && change.position) {
-            userPositionsRef.current[change.id] = change.position;
-          }
-        });
+        
+        // Handle position changes (dragging)
+        const positionChanges = changes.filter(
+          (change): change is NodePositionChange => (
+            change.type === 'position' && 
+            'position' in change && 
+            'dragging' in change &&
+            change.dragging === true
+          )
+        );
+        
+        if (positionChanges.length > 0) {
+          // For each moved node, calculate the delta and apply to its children
+          const childMap = getChildMap(edges);
+          const deltas = new Map<string, { dx: number; dy: number }>();
+          
+          // First pass: calculate position deltas for moved nodes
+          positionChanges.forEach(change => {
+            const oldNode = nds.find(n => n.id === change.id);
+            if (oldNode && change.position) {
+              deltas.set(change.id, {
+                dx: change.position.x - oldNode.position.x,
+                dy: change.position.y - oldNode.position.y
+              });
+              // Store user-defined position
+              userPositionsRef.current[change.id] = change.position;
+            }
+          });
+          
+          // Second pass: apply deltas to descendants
+          const updatedNodes = newNodes.map(node => {
+            // Find the nearest dragged ancestor
+            let current = node.id;
+            let deltaToApply: { dx: number; dy: number } | undefined;
+            
+            while (current) {
+              const delta = deltas.get(current);
+              if (delta) {
+                deltaToApply = delta;
+                break;
+              }
+              // Move up to parent
+              const parent = edges.find(e => e.target === current)?.source;
+              if (!parent) break;
+              current = parent;
+            }
+            
+            // Apply ancestor's movement to this node
+            if (deltaToApply) {
+              const newPos = {
+                x: node.position.x + deltaToApply.dx,
+                y: node.position.y + deltaToApply.dy
+              };
+              userPositionsRef.current[node.id] = newPos;
+              return { ...node, position: newPos };
+            }
+            return node;
+          });
+          
+          return updatedNodes;
+        }
+        
         return newNodes;
       });
     },
-    []
+    [edges]
   );
 
   // --- Initial Mind Map
