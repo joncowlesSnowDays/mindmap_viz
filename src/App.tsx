@@ -46,7 +46,7 @@ const App: React.FC = () => {
           <input
             type="number"
             min={1}
-            max={25}
+            max={30}
             value={automateCount}
             onChange={e => setAutomateCount(Number(e.target.value))}
             style={{ width: 56, padding: 6 }}
