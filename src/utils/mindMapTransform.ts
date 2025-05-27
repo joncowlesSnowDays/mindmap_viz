@@ -156,6 +156,7 @@ export function transformGPTToFlow(gptData: any, isNewMindMap: boolean = false):
         collapsed: !!n.collapsed,
         level: nodeLevel,
         isNew: !!n.isNew,
+        backgroundColor: backgroundColor,
         ...n,
         isRoot: n.id === "root",
       },

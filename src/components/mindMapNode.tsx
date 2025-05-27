@@ -22,7 +22,7 @@ const MindMapNode: React.FC<MindMapNodeProps> = ({
   return (
     <div
       style={{
-        background: data.isRoot ? "#fff" : (data.style?.background || "#fff"),
+        background: data.isRoot ? "#fff" : (data.backgroundColor || "#fff"),
         border: selected ? "2px solid #7c3aed" : "1.5px solid #bbb",
         borderRadius: 12,
         padding: "8px 16px",
@@ -57,8 +57,8 @@ const MindMapNode: React.FC<MindMapNodeProps> = ({
               data.onInfoClick?.(id);
             }}
             style={{
-              width: 24,
-              height: 24,
+              width: 32,
+              height: 32,
               padding: 0,
               border: "none",
               background: "none",
@@ -76,10 +76,10 @@ const MindMapNode: React.FC<MindMapNodeProps> = ({
               e.currentTarget.style.opacity = "0.6";
             }}
           >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <circle cx="12" cy="12" r="10" />
-              <path d="M12 16v-4" />
-              <path d="M12 8h.01" />
+              <line x1="12" y1="16" x2="12" y2="12" />
+              <circle cx="12" cy="8" r="0.5" fill="currentColor" />
             </svg>
           </button>
         )}
@@ -90,8 +90,8 @@ const MindMapNode: React.FC<MindMapNodeProps> = ({
               data.onExpandClick?.(id);
             }}
             style={{
-              width: 24,
-              height: 24,
+              width: 32,
+              height: 32,
               padding: 0,
               border: "none",
               background: "none",
@@ -109,7 +109,7 @@ const MindMapNode: React.FC<MindMapNodeProps> = ({
               e.currentTarget.style.opacity = "0.6";
             }}
           >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               {hasChildren ? (
                 isExpanded ? (
                   // Minus icon
