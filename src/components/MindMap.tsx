@@ -443,7 +443,8 @@ const MindMap: React.FC<MindMapProps> = ({
       userPositionsRef.current = {};
       const gptData = await queryGPT(userQuery, mindMapContextRef.current, null);
       if (gptData && gptData.nodes && gptData.edges) {
-        const { nodes: baseNodes, edges: baseEdges } = transformGPTToFlow(gptData);
+        // Pass true for isNewMindMap since this is a fresh mind map
+        const { nodes: baseNodes, edges: baseEdges } = transformGPTToFlow(gptData, true);
         const mainNodeId = baseNodes[0]?.id || "main";
         let positionedNodes = assignStaggeredTreePositions(
           baseNodes, baseEdges, mainNodeId, startX, startY, xGap, yGap, staggerY, userPositionsRef.current
@@ -495,7 +496,7 @@ const MindMap: React.FC<MindMapProps> = ({
         const { nodes: flowNodes, edges: flowEdges } = transformGPTToFlow({ 
           nodes: newNodes, 
           edges: gptData.edges 
-        });          // Preserve existing node positions and colors, including descendants
+        }, false);          // Preserve existing node positions and colors, including descendants
           const existingPositions = { ...userPositionsRef.current };
           const descendants = getDescendantIds(nodeId, getChildMap(edges));
           
@@ -587,7 +588,7 @@ const MindMap: React.FC<MindMapProps> = ({
           const { nodes: flowNodes, edges: flowEdges } = transformGPTToFlow({ 
             nodes: newNodes, 
             edges: gptData.edges 
-          });
+          }, false);
 
           // Preserve existing node positions and colors, including descendants
           const existingPositions = { ...userPositionsRef.current };

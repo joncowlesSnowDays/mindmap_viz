@@ -100,11 +100,13 @@ function calculateNodeLevels(nodes: any[], edges: any[]): Map<string, number> {
 /*
  * Transforms GPT data to React Flow nodes and edges, with preview node style and arrow markers.
  */
-export function transformGPTToFlow(gptData: any): { nodes: Node[]; edges: Edge[] } {
+export function transformGPTToFlow(gptData: any, isNewMindMap: boolean = false): { nodes: Node[]; edges: Edge[] } {
   if (!gptData || !gptData.nodes) return { nodes: [], edges: [] };
 
-  // Reset colors when creating a new mind map
-  resetLevelColors();
+  // Only reset colors when creating a new mind map
+  if (isNewMindMap) {
+    resetLevelColors();
+  }
 
   // Calculate levels for all nodes
   const nodeLevels = calculateNodeLevels(gptData.nodes, gptData.edges);
