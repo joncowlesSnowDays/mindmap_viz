@@ -495,17 +495,29 @@ const MindMap: React.FC<MindMapProps> = ({
         const { nodes: flowNodes, edges: flowEdges } = transformGPTToFlow({ 
           nodes: newNodes, 
           edges: gptData.edges 
-        });
+        });          // Preserve existing node positions and colors, including descendants
+          const existingPositions = { ...userPositionsRef.current };
+          const descendants = getDescendantIds(nodeId, getChildMap(edges));
+          
+          // Store positions for all existing nodes and their descendants
+          nodes.forEach(n => {
+            // Store position for any node that doesn't have a stored position yet
+            if (!existingPositions[n.id]) {
+              existingPositions[n.id] = { ...n.position };
+            }
+            
+            // If this is a node we're expanding, also store positions of its descendants
+            if (n.id === nodeId) {
+              descendants.forEach(descId => {
+                const desc = nodes.find(d => d.id === descId);
+                if (desc) {
+                  existingPositions[descId] = { ...desc.position };
+                }
+              });
+            }
+          });
 
-        // Preserve existing node positions and colors
-        const existingPositions = { ...userPositionsRef.current };
-        nodes.forEach(n => {
-          if (!existingPositions[n.id]) {
-            existingPositions[n.id] = { ...n.position };
-          }
-        });
-
-        const merged = mergeExpandedNodesAndEdges(nodes, edges, flowNodes, flowEdges, nodeId);
+          const merged = mergeExpandedNodesAndEdges(nodes, edges, flowNodes, flowEdges, nodeId);
 
         // Calculate new layout while preserving positions
         const mainNodeId = nodes[0]?.id || "main";
@@ -577,11 +589,25 @@ const MindMap: React.FC<MindMapProps> = ({
             edges: gptData.edges 
           });
 
-          // Preserve existing node positions and colors
+          // Preserve existing node positions and colors, including descendants
           const existingPositions = { ...userPositionsRef.current };
+          const descendants = getDescendantIds(picked.id, getChildMap(localEdges));
+          
+          // Store positions for all existing nodes and their descendants
           localNodes.forEach(n => {
+            // Store position for any node that doesn't have a stored position yet
             if (!existingPositions[n.id]) {
               existingPositions[n.id] = { ...n.position };
+            }
+            
+            // If this is a node we're expanding, also store positions of its descendants
+            if (n.id === picked.id) {
+              descendants.forEach(descId => {
+                const desc = localNodes.find(d => d.id === descId);
+                if (desc) {
+                  existingPositions[descId] = { ...desc.position };
+                }
+              });
             }
           });
 
