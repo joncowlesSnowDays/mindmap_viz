@@ -479,10 +479,20 @@ const MindMap: React.FC<MindMapProps> = ({
       if (gptData && gptData.nodes && gptData.edges) {
         // Mark new nodes with isNew flag for animation
         const newNodes = gptData.nodes.map(n => ({ ...n, isNew: true }));
+        
+        // First merge to get the complete context
+        const merged = mergeExpandedNodesAndEdges(nodes, edges, [], [], nodeId);
+        // Add the new nodes to the merged context
+        const fullContext = {
+          nodes: [...merged.nodes, ...newNodes],
+          edges: [...merged.edges, ...gptData.edges]
+        };
+        
+        // Now transform with full context for proper level calculation
         const { nodes: flowNodes, edges: flowEdges } = transformGPTToFlow({ 
           nodes: newNodes, 
           edges: gptData.edges 
-        }, false);          // Preserve all existing positions using the helper
+        }, false, fullContext.nodes, fullContext.edges);          // Preserve all existing positions using the helper
         const existingPositions = preserveExistingPositions(nodes, edges, userPositionsRef.current, nodeId);
 
           const merged = mergeExpandedNodesAndEdges(nodes, edges, flowNodes, flowEdges, nodeId);
@@ -552,10 +562,19 @@ const MindMap: React.FC<MindMapProps> = ({
         if (gptData && gptData.nodes && gptData.edges) {
           // Mark new nodes with isNew flag for animation
           const newNodes = gptData.nodes.map(n => ({ ...n, isNew: true }));
+          
+          // First get the complete context by temporarily merging
+          const tempMerged = mergeExpandedNodesAndEdges(localNodes, localEdges, [], [], picked.id);
+          const fullContext = {
+            nodes: [...tempMerged.nodes, ...newNodes],
+            edges: [...tempMerged.edges, ...gptData.edges]
+          };
+          
+          // Transform with full context for proper level calculation
           const { nodes: flowNodes, edges: flowEdges } = transformGPTToFlow({ 
             nodes: newNodes, 
             edges: gptData.edges 
-          }, false);
+          }, false, fullContext.nodes, fullContext.edges);
 
           // Preserve existing node positions and colors, including descendants
           const existingPositions = { ...userPositionsRef.current };
