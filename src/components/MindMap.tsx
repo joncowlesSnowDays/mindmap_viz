@@ -52,7 +52,77 @@ function estimateNodeHeight(): number {
   return Math.max(minNodeHeight, 30); 
 }
 
-// --- Space Finding Utilities ---
+// --- Bulk Space Finding for Groups ---
+function findBulkSpace(
+  existingNodes: Node[],
+  parentNode: Node,
+  childrenData: Array<{id: string, width: number, height: number}>,
+  minGap: number = minNodePadding
+): { x: number; y: number; width: number; height: number } {
+  // Calculate total dimensions needed for all children
+  const totalWidth = childrenData.reduce((sum, child) => sum + child.width, 0) + 
+                    xGap * (childrenData.length - 1);
+  const maxHeight = Math.max(...childrenData.map(child => child.height));
+  
+  // Convert existing nodes to bounding boxes for collision checks
+  const boxes = existingNodes.map(n => ({
+    x: n.position.x - estimateNodeWidth(n.data?.label || "") / 2,
+    y: n.position.y - estimateNodeHeight() / 2,
+    width: estimateNodeWidth(n.data?.label || ""),
+    height: estimateNodeHeight(),
+    id: n.id
+  }));
+
+  // Start search from parent position
+  const baseX = parentNode.position.x;
+  const dynamicYGap = Math.max(yGap, maxHeight * 1.5);
+  const baseY = parentNode.position.y + dynamicYGap;
+  
+  // Define search parameters for bulk area
+  const searchRegions = [
+    // Centered below parent (preferred)
+    { x: baseX - totalWidth / 2, y: baseY, priority: 1 },
+    // Left of parent
+    { x: baseX - totalWidth - minGap * 2, y: baseY, priority: 2 },
+    // Right of parent  
+    { x: baseX + minGap * 2, y: baseY, priority: 2 },
+    // Further down, centered
+    { x: baseX - totalWidth / 2, y: baseY + maxHeight + minGap * 2, priority: 3 },
+    // Further down, left
+    { x: baseX - totalWidth - minGap * 3, y: baseY + maxHeight + minGap * 2, priority: 3 },
+    // Further down, right
+    { x: baseX + minGap * 3, y: baseY + maxHeight + minGap * 2, priority: 3 }
+  ];
+
+  // Test each search region
+  for (const region of searchRegions.sort((a, b) => a.priority - b.priority)) {
+    const proposedArea = {
+      x: region.x,
+      y: region.y,
+      width: totalWidth,
+      height: maxHeight
+    };
+
+    // Check if this area conflicts with any existing nodes
+    const hasCollision = boxes.some(box => 
+      checkCollisionWithSpacing(proposedArea, box, minGap)
+    );
+
+    if (!hasCollision) {
+      return proposedArea;
+    }
+  }
+
+  // Fallback: place far below with extra spacing
+  return {
+    x: baseX - totalWidth / 2,
+    y: baseY + maxHeight * 2 + minGap * 3,
+    width: totalWidth,
+    height: maxHeight
+  };
+}
+
+// --- Individual Space Finding (Legacy - for backwards compatibility) ---
 function findOpenSpace(
   existingNodes: Node[],
   parentNode: Node,
@@ -239,40 +309,72 @@ function assignStaggeredTreePositions(
     const parentPos = idToNode[id].position;
     const parentBottom = parentPos.y + minNodeHeight/2;
 
-    const totalChildrenWidth =
-      children.reduce((sum, cid) => sum + nodeWidth(cid), 0) +
-      xGap * (children.length - 1);
+    // Prepare children data for bulk placement
+    const childrenData = children.map(childId => ({
+      id: childId,
+      width: nodeWidth(childId),
+      height: estimateNodeHeight()
+    }));
 
-    let left = x - totalChildrenWidth / 2 + nodeWidth(children[0]) / 2;
+    // Check if any children have manual positions
+    const hasManualPositions = children.some(childId => userPositions[childId]);
     
-    // Place children with smart space finding
-    children.forEach((childId, i) => {
-      if (userPositions[childId]) {
-        placeSubtree(childId, depth + 1, userPositions[childId].x, userPositions[childId].y);
-        return;
-      }
+    if (hasManualPositions) {
+      // Use legacy individual placement for manually positioned nodes
+      const totalChildrenWidth =
+        children.reduce((sum, cid) => sum + nodeWidth(cid), 0) +
+        xGap * (children.length - 1);
 
-      const childX = left + nodeWidth(childId) / 2;
-      const existingNodes = Object.values(idToNode).filter(n => 
-        n.id !== childId && !children.includes(n.id)
-      );
-
-      const position = findOpenSpace(
-        existingNodes,
-        idToNode[id],
-        nodeWidth(childId),
-        minNodeHeight,
-        staggerY,
-        i,
-        children.length
-      );
-
-      // Ensure the child stays below parent
-      const adjustedY = Math.max(position.y, parentBottom + minNodeHeight/2);
+      let left = x - totalChildrenWidth / 2 + nodeWidth(children[0]) / 2;
       
-      placeSubtree(childId, depth + 1, position.x, adjustedY);
-      left += nodeWidth(childId) + xGap;
-    });
+      children.forEach((childId, i) => {
+        if (userPositions[childId]) {
+          placeSubtree(childId, depth + 1, userPositions[childId].x, userPositions[childId].y);
+          return;
+        }
+
+        const childX = left + nodeWidth(childId) / 2;
+        const existingNodes = Object.values(idToNode).filter(n => 
+          n.id !== childId && !children.includes(n.id)
+        );
+
+        const position = findOpenSpace(
+          existingNodes,
+          idToNode[id],
+          nodeWidth(childId),
+          minNodeHeight,
+          staggerY,
+          i,
+          children.length
+        );
+
+        // Ensure the child stays below parent
+        const adjustedY = Math.max(position.y, parentBottom + minNodeHeight/2);
+        
+        placeSubtree(childId, depth + 1, position.x, adjustedY);
+        left += nodeWidth(childId) + xGap;
+      });
+    } else {
+      // Use new bulk placement strategy for all new nodes
+      const existingNodes = Object.values(idToNode).filter(n => 
+        !children.includes(n.id) && n.id !== id
+      );
+
+      const bulkArea = findBulkSpace(existingNodes, idToNode[id], childrenData);
+      
+      // Place children within the reserved bulk area
+      let currentX = bulkArea.x;
+      children.forEach((childId, i) => {
+        const childData = childrenData[i];
+        const adjustedY = Math.max(bulkArea.y, parentBottom + minNodeHeight/2);
+        
+        // Center the child horizontally within its allocated width
+        const childCenterX = currentX + childData.width / 2;
+        
+        placeSubtree(childId, depth + 1, childCenterX, adjustedY);
+        currentX += childData.width + xGap;
+      });
+    }
   }
 
   if (idToNode[rootId]) {

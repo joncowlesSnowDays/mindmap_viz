@@ -19,9 +19,6 @@ const MindMapNode: React.FC<MindMapNodeProps> = ({
   const isExpanded = data.isExpanded;
   const isNew = data.isNew;
   
-  // Debug: Log the background color being used
-  console.log(`Node ${id} (${data.label}): backgroundColor=${data.backgroundColor}, isRoot=${data.isRoot}, level=${data.level}`);
-  
   return (
     <div
       style={{

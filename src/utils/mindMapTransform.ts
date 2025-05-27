@@ -151,9 +151,6 @@ export function transformGPTToFlow(gptData: any, isNewMindMap: boolean = false, 
     const nodeLevel = nodeLevels.get(n.id) || 0;
     const backgroundColor = getLevelColor(nodeLevel);
     
-    // Debug: Log the color generation
-    console.log(`Transform node ${n.id} (${n.label}): level=${nodeLevel}, backgroundColor=${backgroundColor}`);
-    
     return {
       id: n.id,
       type: "mindMapNode",
